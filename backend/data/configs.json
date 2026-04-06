@@ -1,0 +1,22 @@
+{
+  "tr": {
+    "clientPrivateKey": "ZtKoCYfzk6NraMRUkVmtvVCZw8HNz4gLCdcCMpWQv6I=",
+    "clientAddress": "10.0.0.2/32",
+    "dns": "1.1.1.1, 8.8.8.8"
+  },
+  "de": {
+    "clientPrivateKey": "G0bqNrOgE+Zy+rvQ4lD2nJNNymdoBUki85a/Ui94l5E=",
+    "clientAddress": "10.0.0.3/32",
+    "dns": "1.1.1.1, 8.8.8.8"
+  },
+  "nl": {
+    "clientPrivateKey": "89LTFbwPDkLpCuBKmkP4lLOQEyIH+wOw05lsZVCoaso=",
+    "clientAddress": "10.0.0.4/32",
+    "dns": "1.1.1.1, 8.8.8.8"
+  },
+  "us": {
+    "clientPrivateKey": "4iavaxQpdQLG41uoBLPDZSVdjWA6DfshY4hh4mYyy4o=",
+    "clientAddress": "10.0.0.5/32",
+    "dns": "1.1.1.1, 8.8.8.8"
+  }
+}

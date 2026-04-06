@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "VPN",
+    "slug": "vpn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a12"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vpn.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "VPN bağlantısı için ağ erişimi gerekir",
+        "UIBackgroundModes": ["network"],
+        "NSAppTransportSecurity": {
+          "AllowsArbitraryLoads": false,
+          "AllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.vpn.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
