@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// iPhone/telefon test: bilgisayar IP'si (aynı Wi-Fi gerekli). Simülatör için localhost kullanın.
-let BASE_URL = 'http://192.168.1.4:3000';
+// Production API (Lightsail). Yerel test için geçici olarak http://BILGISAYAR_LAN_IP:3000 kullanılabilir.
+let BASE_URL = 'http://35.163.17.141';
 const DEVICE_ID_KEY = 'vpn.deviceId';
 
 let authToken = null;
@@ -77,6 +77,21 @@ export const api = {
   },
   async purchasePlan(planId) {
     return request('/billing/purchase', { method: 'POST', body: JSON.stringify({ planId }) });
+  },
+  async getPublicIpInfo() {
+    const ipRes = await fetch('https://api.ipify.org?format=json');
+    const ipData = await ipRes.json().catch(() => ({}));
+    const ip = ipData.ip || null;
+    if (!ip) return { ip: null, country: null, city: null };
+
+    const geoRes = await fetch(`https://ipapi.co/${ip}/json/`);
+    const geo = await geoRes.json().catch(() => ({}));
+    return {
+      ip,
+      country: geo.country_name || geo.country || null,
+      city: geo.city || null,
+      countryCode: geo.country_code || null,
+    };
   },
 };
 

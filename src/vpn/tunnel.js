@@ -1,7 +1,9 @@
 /**
- * VPN tüneli - wireguard-native-bridge kullanır.
- * Expo Go'da native modül yok; development build gerekir (npx expo prebuild && npx expo run:android)
+ * VPN tüneli — wireguard-native-bridge (Expo native modülü).
+ * Expo Go’da modül yoktur; gerçek bağlantı için: npx expo prebuild && npx expo run:ios|android
  */
+import { Platform } from 'react-native';
+
 let WG = null;
 try {
   WG = require('wireguard-native-bridge');
@@ -10,19 +12,28 @@ try {
 }
 
 export async function prepare() {
-  if (!WG) throw new Error('NATIVE_MODULE_MISSING');
-  try {
+  if (!WG || typeof WG.prepareVPN !== 'function') {
+    throw new Error('NATIVE_MODULE_MISSING');
+  }
+  if (Platform.OS === 'android') {
     await WG.prepareVPN();
-  } catch (_) {}
+  }
 }
 
 export async function connect(configString) {
-  if (!WG || !WG.startTunnel) throw new Error('NATIVE_MODULE_MISSING');
+  if (!WG || typeof WG.startTunnel !== 'function') {
+    throw new Error('NATIVE_MODULE_MISSING');
+  }
   try {
     await WG.startTunnel(configString);
   } catch (e) {
-    const msg = (e && e.message) || '';
-    if (msg.includes('null') || msg.includes('not found') || msg.includes('Native')) {
+    const msg = String((e && e.message) || e || '');
+    if (
+      msg === 'NATIVE_MODULE_MISSING' ||
+      /TurboModuleRegistry|Native module.*[Ww]ireguard|Unimplemented component|cannot find native module/i.test(
+        msg
+      )
+    ) {
       throw new Error('NATIVE_MODULE_MISSING');
     }
     throw e;
@@ -38,5 +49,25 @@ export async function disconnect() {
 }
 
 export function isNativeAvailable() {
-  return !!WG && !!WG.startTunnel;
+  return !!WG && typeof WG.startTunnel === 'function';
+}
+
+export async function getStatus() {
+  if (!WG || typeof WG.getTunnelStatus !== 'function') return 'UNKNOWN';
+  try {
+    const state = await WG.getTunnelStatus();
+    return String(state || 'UNKNOWN').toUpperCase();
+  } catch (_) {
+    return 'UNKNOWN';
+  }
+}
+
+export async function waitUntilUp(timeoutMs = 12000, intervalMs = 500) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await getStatus();
+    if (status === 'UP' || status === 'CONNECTED') return true;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return false;
 }

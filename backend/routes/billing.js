@@ -16,7 +16,7 @@ router.get('/plans', (_req, res) => {
 
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    if (!req.user?.userId) return res.status(401).json({ error: 'Geçersiz token payload' });
+    if (!req.user || !req.user.userId) return res.status(401).json({ error: 'Geçersiz token payload' });
     const subscription = await query(
       'SELECT provider, status, renew_at FROM subscriptions WHERE user_id = $1 LIMIT 1',
       [req.user.userId]
@@ -32,7 +32,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 
 router.post('/purchase', authMiddleware, async (req, res) => {
   try {
-    if (!req.user?.userId) return res.status(401).json({ error: 'Geçersiz token payload' });
+    if (!req.user || !req.user.userId) return res.status(401).json({ error: 'Geçersiz token payload' });
     const { planId } = req.body || {};
     const plan = PLANS.find((p) => p.id === planId);
     if (!plan) return res.status(400).json({ error: 'Geçersiz plan' });

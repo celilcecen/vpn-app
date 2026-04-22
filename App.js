@@ -15,15 +15,25 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import PurchaseScreen from './src/screens/PurchaseScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import { colors } from './src/theme/colors';
+import LogsScreen from './src/screens/LogsScreen';
+import { sentinel } from './src/theme/sentinel';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const ONBOARDING_KEY = '@vpn_onboarding_seen';
 
 function TabIcon({ name, focused }) {
-  const icons = { Home: '🛡️', Servers: '🌐', Settings: '⚙️' };
-  return <Text style={[styles.tabIcon, focused && styles.tabIconFocused]}>{icons[name]}</Text>;
+  const icons = {
+    Home: '📊',
+    Servers: '🌐',
+    Security: '🛡️',
+    Logs: '📋',
+  };
+  return (
+    <Text style={[styles.tabIcon, focused && styles.tabIconFocused, focused && styles.tabIconActive]}>
+      {icons[name]}
+    </Text>
+  );
 }
 
 function MainTabs() {
@@ -32,15 +42,16 @@ function MainTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarActiveTintColor: sentinel.neon,
+        tabBarInactiveTintColor: sentinel.textLabel,
         tabBarLabelStyle: styles.tabLabel,
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} />,
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Ana Sayfa' }} />
-      <Tab.Screen name="Servers" component={ServersScreen} options={{ tabBarLabel: 'Sunucular' }} />
-      <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarLabel: 'Ayarlar' }} />
+      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'DASHBOARD' }} />
+      <Tab.Screen name="Servers" component={ServersScreen} options={{ tabBarLabel: 'SERVERS' }} />
+      <Tab.Screen name="Security" component={SettingsScreen} options={{ tabBarLabel: 'SECURITY' }} />
+      <Tab.Screen name="Logs" component={LogsScreen} options={{ tabBarLabel: 'LOGS' }} />
     </Tab.Navigator>
   );
 }
@@ -74,7 +85,7 @@ function MainApp() {
   if (loading || !onboardingReady) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={sentinel.neon} />
       </View>
     );
   }
@@ -90,14 +101,18 @@ function MainApp() {
         <StatusBar style="light" />
         <Stack.Navigator
           screenOptions={{
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            contentStyle: { backgroundColor: colors.background },
+            headerStyle: { backgroundColor: sentinel.bg },
+            headerTintColor: sentinel.text,
+            contentStyle: { backgroundColor: sentinel.bg },
             animation: 'slide_from_right',
             animationDuration: 260,
           }}
         >
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="Main"
+            component={MainTabs}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen
             name="Purchase"
             component={PurchaseScreen}
@@ -121,28 +136,34 @@ export default function App() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: colors.surface,
-    borderTopColor: colors.cardBorder,
+    backgroundColor: sentinel.tabBar,
+    borderTopColor: sentinel.cardBorder,
     borderTopWidth: 1,
-    paddingTop: 10,
-    height: 76,
-    paddingBottom: 10,
+    paddingTop: 12,
+    height: 86,
+    paddingBottom: 12,
   },
   tabLabel: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
   tabIcon: {
-    fontSize: 21,
-    opacity: 0.65,
+    fontSize: 22,
+    opacity: 0.55,
   },
   tabIconFocused: {
     opacity: 1,
+  },
+  tabIconActive: {
+    textShadowColor: sentinel.neonGlow,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   loadingWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: sentinel.bg,
   },
 });

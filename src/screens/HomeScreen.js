@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,47 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
+  ScrollView,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVPN } from '../context/VPNContext';
-import { colors } from '../theme/colors';
-import { getFlag } from '../utils/flags';
+import { sentinel } from '../theme/sentinel';
 import * as Haptics from 'expo-haptics';
+
+function formatDuration(totalSec) {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function Card({ children, accentColor, style }) {
+  return (
+    <View style={[styles.card, { borderLeftColor: accentColor || sentinel.neon }, style]}>
+      {children}
+    </View>
+  );
+}
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { connected, connecting, toggleConnection, selectedServer, connectionError, clearConnectionError, demoMode } = useVPN();
+  const {
+    connected,
+    connecting,
+    toggleConnection,
+    selectedServer,
+    tunnelStatus,
+    exitInfo,
+    connectionError,
+    clearConnectionError,
+    demoMode,
+    killSwitch,
+    setKillSwitch,
+  } = useVPN();
+
+  const [sessionSec, setSessionSec] = useState(0);
+  const [liveMbps, setLiveMbps] = useState({ down: 0, up: 0 });
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const enterAnim = useRef(new Animated.Value(0)).current;
@@ -31,38 +62,51 @@ export default function HomeScreen({ navigation }) {
   }, [enterAnim]);
 
   useEffect(() => {
+    if (!connected) {
+      setSessionSec(0);
+      setLiveMbps({ down: 0, up: 0 });
+      return;
+    }
+    const id = setInterval(() => setSessionSec((x) => x + 1), 1000);
+    return () => clearInterval(id);
+  }, [connected]);
+
+  useEffect(() => {
+    if (!connected) return;
+    setLiveMbps({
+      down: 115 + Math.random() * 25,
+      up: 38 + Math.random() * 18,
+    });
+    const id = setInterval(() => {
+      setLiveMbps({
+        down: 115 + Math.random() * 25,
+        up: 38 + Math.random() * 18,
+      });
+    }, 2500);
+    return () => clearInterval(id);
+  }, [connected]);
+
+  useEffect(() => {
     if (connected) {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 0,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0, duration: 1500, useNativeDriver: true }),
         ])
       );
       pulse.start();
       return () => pulse.stop();
-    } else {
-      pulseAnim.setValue(0);
     }
-  }, [connected]);
-
-  const statusText = connecting ? 'Bağlanıyor...' : connected ? 'Korunuyorsunuz' : 'Bağlı değil';
-  const buttonLabel = connecting ? '' : connected ? 'Bağlantıyı Kes' : 'Bağlan';
+    pulseAnim.setValue(0);
+  }, [connected, pulseAnim]);
 
   const pulseScale = pulseAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 1.15],
+    outputRange: [1, 1.08],
   });
   const pulseOpacity = pulseAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.6, 0.8],
+    outputRange: [0.35, 0.75],
   });
 
   const onPressIn = () => {
@@ -71,274 +115,467 @@ export default function HomeScreen({ navigation }) {
     } else {
       Haptics.selectionAsync().catch(() => {});
     }
-    Animated.timing(scaleAnim, {
-      toValue: 0.96,
-      duration: 100,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(scaleAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }).start();
   };
   const onPressOut = () => {
-    Animated.timing(scaleAnim, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(scaleAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
   };
+
+  const serverCode = selectedServer.code && selectedServer.code.length <= 3 ? selectedServer.code : 'NODE';
+  const nodeId = `${String(serverCode).toUpperCase()}-SEC-${String(selectedServer.ping || 0).padStart(2, '0')}`;
 
   return (
     <Animated.View
       style={[
-        styles.container,
+        styles.root,
         {
-          paddingTop: insets.top + 16,
           opacity: enterAnim,
-          transform: [
-            {
-              translateY: enterAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [14, 0],
-              }),
-            },
-          ],
         },
       ]}
     >
-      <Text style={styles.title}>GuardLane VPN</Text>
-      <Text style={styles.subtitle}>{statusText}</Text>
-      {demoMode && <Text style={styles.demoBadge}>Demo modu (Expo Go)</Text>}
-
-      <View style={styles.buttonWrapper}>
-        <Animated.View
-          style={[
-            styles.outerRing,
-            {
-              transform: [{ scale: pulseScale }],
-              opacity: pulseOpacity,
-            },
-          ]}
-        />
-        {connected && (
-          <Animated.View
-            style={[
-              styles.outerRing,
-              styles.ring2,
-              {
-                transform: [{ scale: pulseScale }],
-                opacity: pulseOpacity,
-              },
-            ]}
-          />
-        )}
-        <Pressable
-          onPress={toggleConnection}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
-          disabled={connecting}
-          style={[
-            styles.connectButton,
-            connected && styles.connectButtonConnected,
-            connecting && styles.connectButtonConnecting,
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.innerCircle,
-              connected && styles.innerCircleConnected,
-              { transform: [{ scale: scaleAnim }] },
-            ]}
-          >
-            {connecting ? (
-              <ActivityIndicator size="large" color={colors.background} />
-            ) : (
-              <Text style={styles.shield}>{connected ? '🔒' : '🛡️'}</Text>
-            )}
-          </Animated.View>
-        </Pressable>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={styles.logoRow}>
+          <Text style={styles.logoShield}>🛡</Text>
+          <Text style={styles.logoText}>SENTINEL</Text>
+        </View>
+        <View style={styles.headerIcons}>
+          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
+            <Text style={styles.headerIcon}>🔔</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
+            <Text style={styles.headerIcon}>👤</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <Text style={styles.buttonLabel}>{buttonLabel}</Text>
-
-      {connectionError ? (
-        <Text style={styles.errorText} onPress={clearConnectionError}>{connectionError}</Text>
-      ) : null}
-
-      <TouchableOpacity
-        activeOpacity={0.8}
-        style={styles.serverChip}
-        onPress={() => {
-          if (Platform.OS === 'ios') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-          } else {
-            Haptics.selectionAsync().catch(() => {});
-          }
-          navigation.navigate('Servers');
-        }}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 112 }]}
       >
-        <Text style={styles.serverEmoji}>{getFlag(selectedServer.id)}</Text>
-        <Text style={styles.serverName}>{selectedServer.country}</Text>
-        <Text style={styles.serverPing}>{selectedServer.ping} ms</Text>
-      </TouchableOpacity>
+        <View style={styles.powerSection}>
+          <View style={styles.buttonWrapper}>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.neonRing,
+                {
+                  transform: [{ scale: pulseScale }],
+                  opacity: connected ? pulseOpacity : 0.25,
+                },
+              ]}
+            />
+            <Pressable
+              onPress={() => {
+                void toggleConnection();
+              }}
+              onPressIn={onPressIn}
+              onPressOut={onPressOut}
+              disabled={connecting}
+              style={({ pressed }) => [
+                styles.powerPressable,
+                pressed && styles.powerPressablePressed,
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.powerOuter,
+                  connected && styles.powerOuterConnected,
+                  connecting && styles.powerOuterConnecting,
+                  { transform: [{ scale: scaleAnim }] },
+                ]}
+              >
+                <View style={styles.powerInner}>
+                  {connecting ? (
+                    <ActivityIndicator size="large" color={sentinel.neon} />
+                  ) : (
+                    <>
+                      <Text style={styles.powerGlyph}>⏻</Text>
+                      <Text style={styles.powerStateText}>
+                        {connected ? 'CONNECTED' : 'DISCONNECTED'}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </Animated.View>
+            </Pressable>
+          </View>
 
-      {connected && (
-        <View style={styles.stats}>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>256</Text>
-            <Text style={styles.statLabel}>Mbps</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{selectedServer.ping}</Text>
-            <Text style={styles.statLabel}>ms ping</Text>
-          </View>
+          <Text style={styles.protectionLabel}>
+            {connected && tunnelStatus === 'UP' ? 'PROTECTION ACTIVE' : 'PROTECTION INACTIVE'}
+          </Text>
+          <Text
+            style={[
+              styles.timer,
+              !connected && styles.timerInactive,
+            ]}
+          >
+            {formatDuration(sessionSec)}
+          </Text>
         </View>
-      )}
+
+        {demoMode ? (
+          <Text style={styles.demoHint}>
+            Expo Go’da gerçek VPN yok. Bağlanmak için projeyi derleyin: npx expo prebuild → npx expo run:ios
+            veya run:android.
+          </Text>
+        ) : null}
+
+        {connectionError ? (
+          <Text style={styles.errorText} onPress={clearConnectionError}>
+            {connectionError}
+          </Text>
+        ) : null}
+
+        <Card accentColor={sentinel.neon}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>CURRENT IP</Text>
+            <Text style={styles.cardIcon}>🌍</Text>
+          </View>
+          <Text style={styles.cardValueLarge}>
+            {connected ? exitInfo.ip || 'Detecting…' : '— — — —'}
+          </Text>
+          <Text style={styles.cardSub}>
+            {connected
+              ? `${exitInfo.city ? `${exitInfo.city}, ` : ''}${exitInfo.country || selectedServer.country}`
+              : 'Not connected'}
+          </Text>
+        </Card>
+
+        <Card accentColor={sentinel.neon}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>NETWORK THROUGHPUT</Text>
+            <View style={styles.encryptedPill}>
+              <View style={styles.encryptedDot} />
+              <Text style={styles.encryptedText}>ENCRYPTED</Text>
+            </View>
+          </View>
+          <View style={styles.throughputRow}>
+            <View style={styles.throughputCol}>
+              <Text style={styles.throughputArrow}>↓</Text>
+              <Text style={styles.throughputNum}>
+                {connected ? liveMbps.down.toFixed(1) : '0.0'}
+              </Text>
+              <Text style={styles.throughputUnit}>MBPS DOWN</Text>
+            </View>
+            <View style={styles.throughputDivider} />
+            <View style={styles.throughputCol}>
+              <Text style={[styles.throughputArrow, { color: sentinel.yellow }]}>↑</Text>
+              <Text style={styles.throughputNum}>
+                {connected ? liveMbps.up.toFixed(1) : '0.0'}
+              </Text>
+              <Text style={styles.throughputUnit}>MBPS UP</Text>
+            </View>
+          </View>
+          <View style={styles.waveLine} />
+        </Card>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            if (Platform.OS === 'ios') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            } else {
+              Haptics.selectionAsync().catch(() => {});
+            }
+            navigation.navigate('Servers');
+          }}
+        >
+          <Card accentColor={sentinel.yellow}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>SERVER NODE</Text>
+              <Text style={styles.cardIcon}>🖥</Text>
+            </View>
+            <Text style={styles.cardValueLarge}>{nodeId}</Text>
+            <Text style={styles.cardSub}>
+              Lat: {selectedServer.ping ?? '—'}ms | AES-256-GCM
+            </Text>
+          </Card>
+        </TouchableOpacity>
+
+        <Card accentColor={sentinel.neon}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>SESSION DATA</Text>
+            <Text style={styles.cardIcon}>↻</Text>
+          </View>
+          <Text style={styles.cardValueLarge}>
+            {connected
+              ? `${Math.max(0.01, sessionSec * 0.004).toFixed(2)} MB`
+              : '0 MB'}
+          </Text>
+        </Card>
+
+        <View style={[styles.card, styles.killRow, { borderLeftColor: sentinel.neon }]}>
+          <View>
+            <Text style={styles.killTitle}>Kill Switch</Text>
+            <Text style={styles.killStatus}>{killSwitch ? 'ENABLED' : 'DISABLED'}</Text>
+          </View>
+          <Switch
+            value={killSwitch}
+            onValueChange={setKillSwitch}
+            trackColor={{ false: '#3f3f46', true: sentinel.neonDim }}
+            thumbColor={killSwitch ? sentinel.neon : '#a1a1aa'}
+            ios_backgroundColor="#3f3f46"
+          />
+        </View>
+      </ScrollView>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: sentinel.bg,
+  },
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: 0.3,
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 6,
+  logoShield: {
+    fontSize: 22,
+    color: sentinel.neon,
   },
-  demoBadge: {
-    fontSize: 12,
-    color: colors.warning,
-    marginTop: 12,
-    backgroundColor: colors.secondaryDim,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    overflow: 'hidden',
+  logoText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: sentinel.neon,
+    letterSpacing: 2,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  iconBtn: {
+    padding: 8,
+  },
+  headerIcon: {
+    fontSize: 20,
+    opacity: 0.85,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+  },
+  powerSection: {
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 20,
   },
   buttonWrapper: {
-    width: 200,
-    height: 200,
+    width: 220,
+    height: 220,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 48,
   },
-  outerRing: {
+  powerPressable: {
+    width: 220,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  powerPressablePressed: {
+    opacity: 0.92,
+  },
+  neonRing: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  ring2: {
-    borderColor: colors.secondary,
-  },
-  connectButton: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: colors.cardElevated,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
     borderWidth: 3,
-    borderColor: colors.primary,
+    borderColor: sentinel.neon,
+    shadowColor: sentinel.neon,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  powerOuter: {
+    width: 168,
+    height: 168,
+    borderRadius: 84,
+    backgroundColor: '#0d0f18',
+    borderWidth: 3,
+    borderColor: '#2a3148',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: sentinel.neon,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.55,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  powerOuterConnected: {
+    borderColor: sentinel.neon,
+    backgroundColor: 'rgba(57, 255, 20, 0.06)',
+  },
+  powerOuterConnecting: {
+    borderColor: sentinel.textMuted,
+  },
+  powerInner: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  connectButtonConnected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryDim,
+  powerGlyph: {
+    fontSize: 42,
+    color: sentinel.neon,
+    marginBottom: 4,
+    fontWeight: '300',
   },
-  connectButtonConnecting: {
-    borderColor: colors.textMuted,
+  powerStateText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: sentinel.neon,
+    letterSpacing: 1.2,
   },
-  innerCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  protectionLabel: {
+    marginTop: 18,
+    fontSize: 12,
+    fontWeight: '700',
+    color: sentinel.textMuted,
+    letterSpacing: 2,
   },
-  innerCircleConnected: {
-    backgroundColor: colors.primary,
+  timer: {
+    marginTop: 8,
+    fontSize: 36,
+    fontWeight: '200',
+    color: sentinel.text,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 4,
   },
-  shield: {
-    fontSize: 48,
+  timerInactive: {
+    color: sentinel.textMuted,
+    opacity: 0.65,
   },
-  buttonLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 24,
-  },
-  serverChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    marginTop: 32,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  serverEmoji: {
-    fontSize: 22,
-  },
-  serverName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  serverPing: {
-    fontSize: 14,
-    color: colors.primary,
-    marginLeft: 4,
+  demoHint: {
+    textAlign: 'center',
+    color: sentinel.textLabel,
+    fontSize: 11,
+    marginBottom: 12,
   },
   errorText: {
-    fontSize: 13,
-    color: colors.danger,
+    color: '#f87171',
     textAlign: 'center',
-    marginTop: 12,
-    paddingHorizontal: 20,
+    fontSize: 13,
+    marginBottom: 12,
+    paddingHorizontal: 12,
   },
-  stats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 32,
-    backgroundColor: colors.card,
-    paddingVertical: 20,
-    paddingHorizontal: 40,
+  card: {
+    backgroundColor: sentinel.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: sentinel.cardBorder,
+    borderLeftWidth: 4,
+    padding: 16,
+    marginBottom: 12,
   },
-  stat: {
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
   },
-  statValue: {
-    fontSize: 24,
+  cardTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: sentinel.textLabel,
+    letterSpacing: 1,
+  },
+  cardIcon: {
+    fontSize: 18,
+  },
+  cardValueLarge: {
+    fontSize: 26,
     fontWeight: '700',
-    color: colors.primary,
+    color: sentinel.text,
+    letterSpacing: 0.5,
   },
-  statLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  cardSub: {
+    marginTop: 6,
+    fontSize: 14,
+    color: sentinel.textMuted,
+  },
+  encryptedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  encryptedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: sentinel.neon,
+  },
+  encryptedText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: sentinel.neon,
+    letterSpacing: 0.8,
+  },
+  throughputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 4,
   },
-  statDivider: {
+  throughputCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  throughputArrow: {
+    fontSize: 18,
+    color: sentinel.neon,
+    marginBottom: 4,
+  },
+  throughputNum: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: sentinel.text,
+  },
+  throughputUnit: {
+    fontSize: 10,
+    color: sentinel.textMuted,
+    marginTop: 4,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  throughputDivider: {
     width: 1,
-    height: 32,
-    backgroundColor: colors.cardBorder,
-    marginHorizontal: 32,
+    height: 56,
+    backgroundColor: sentinel.cardBorder,
+  },
+  waveLine: {
+    marginTop: 14,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: sentinel.neonDim,
+    opacity: 0.6,
+  },
+  killRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderLeftWidth: 4,
+  },
+  killTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: sentinel.text,
+  },
+  killStatus: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '800',
+    color: sentinel.neon,
+    letterSpacing: 0.5,
   },
 });

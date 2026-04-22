@@ -1,117 +1,364 @@
-import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useVPN } from '../context/VPNContext';
-import { colors } from '../theme/colors';
+import { sentinel } from '../theme/sentinel';
 import { getFlag } from '../utils/flags';
+import { displayForServer } from '../utils/serverDisplay';
 
-export default function ServersScreen() {
+function activeNodeCount(serverCount) {
+  const n = Math.max(1, serverCount);
+  return n * 81;
+}
+
+export default function ServersScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { servers, selectedServer, selectServer } = useVPN();
+  const [favorites, setFavorites] = useState({});
+
+  const locationServers = useMemo(
+    () => servers.filter((s) => s.id !== 'auto'),
+    [servers]
+  );
+
+  const autoServer = useMemo(
+    () => servers.find((s) => s.id === 'auto') || servers[0],
+    [servers]
+  );
+
+  const nodesLabel = useMemo(
+    () => `${activeNodeCount(locationServers.length)} ACTIVE NODES`,
+    [locationServers.length]
+  );
+
+  const toggleFavorite = useCallback((id) => {
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    setFavorites((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const onSmartConnect = useCallback(() => {
+    if (autoServer) selectServer(autoServer);
+    if (Platform.OS === 'ios') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+    navigation.navigate('Home');
+  }, [autoServer, navigation, selectServer]);
+
+  const renderItem = useCallback(
+    ({ item }) => {
+      const isSelected = selectedServer.id === item.id;
+      const { city, countryLine } = displayForServer(item);
+      const fav = !!favorites[item.id];
+
+      return (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[styles.row, isSelected && styles.rowSelected]}
+          onPress={() => {
+            if (Platform.OS === 'ios') {
+              Haptics.selectionAsync().catch(() => {});
+            }
+            selectServer(item);
+          }}
+        >
+          {isSelected ? <View style={styles.rowAccent} /> : null}
+          <View style={styles.flagCircle}>
+            <Text style={styles.flagEmoji}>{getFlag(item.id)}</Text>
+          </View>
+          <View style={styles.rowMain}>
+            <Text style={styles.cityText} numberOfLines={1}>
+              {city}
+            </Text>
+            <Text style={styles.detailText} numberOfLines={1}>
+              {countryLine}
+            </Text>
+          </View>
+          <View style={styles.latencyCol}>
+            <Text style={styles.latencyLabel}>LATENCY</Text>
+            <Text style={[styles.latencyMs, isSelected && styles.latencyMsActive]}>
+              {item.ping ?? '—'}ms
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.starBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            onPress={() => toggleFavorite(item.id)}
+          >
+            <Text style={[styles.star, fav && styles.starOn]}>{fav ? '★' : '☆'}</Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    },
+    [favorites, selectedServer.id, selectServer, toggleFavorite]
+  );
+
+  const listHeader = (
+    <>
+      <LinearGradient
+        colors={[sentinel.neon, '#2ae610', sentinel.neon]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <Text style={styles.heroTitle}>SMART CONNECT</Text>
+        <Text style={styles.heroSub}>INSTANTLY SECURE YOUR DATA STREAM</Text>
+        <TouchableOpacity style={styles.heroBtn} activeOpacity={0.88} onPress={onSmartConnect}>
+          <Text style={styles.heroBtnText}>CONNECT</Text>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionLeft}>AVAILABLE LOCATIONS</Text>
+        <Text style={styles.sectionRight}>{nodesLabel}</Text>
+      </View>
+    </>
+  );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
-      <Text style={styles.title}>Konum Seçimi</Text>
-      <Text style={styles.subtitle}>Gerçek lokasyonlar arasından en hızlı node'u seçin</Text>
+    <View style={styles.root}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={styles.logoRow}>
+          <Text style={styles.logoShield}>🛡</Text>
+          <Text style={styles.logoText}>SENTINEL</Text>
+        </View>
+        <TouchableOpacity style={styles.profileBtn} activeOpacity={0.7}>
+          <Text style={styles.profileIcon}>👤</Text>
+        </TouchableOpacity>
+      </View>
 
       <FlatList
-        data={servers}
+        data={locationServers}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        renderItem={renderItem}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 102 },
+        ]}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
-          const isSelected = selectedServer.id === item.id;
-          return (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={[styles.row, isSelected && styles.rowSelected]}
-              onPress={() => selectServer(item)}
-            >
-              <Text style={styles.flag}>{getFlag(item.id)}</Text>
-              <View style={styles.rowContent}>
-                <Text style={styles.country}>{item.country}</Text>
-                <Text style={styles.ping}>{item.ping} ms</Text>
-              </View>
-              {isSelected && (
-                <View style={styles.check}>
-                  <Text style={styles.checkText}>✓</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        }}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>No locations available.</Text>
+          </View>
+        }
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 24,
+    backgroundColor: sentinel.bg,
   },
-  title: {
-    fontSize: 26,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoShield: {
+    fontSize: 22,
+    color: sentinel.neon,
+  },
+  logoText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: sentinel.neon,
+    letterSpacing: 2,
+  },
+  profileBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: sentinel.textMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileIcon: {
+    fontSize: 18,
+    opacity: 0.85,
+  },
+  listContent: {
+    paddingHorizontal: 20,
+  },
+  heroCard: {
+    borderRadius: 20,
+    padding: 22,
+    marginBottom: 20,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: sentinel.neon,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+      },
+      android: { elevation: 10 },
+    }),
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: sentinel.bg,
+    letterSpacing: 1.2,
+    textAlign: 'center',
+  },
+  heroSub: {
+    marginTop: 8,
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.text,
+    color: 'rgba(18, 20, 32, 0.75)',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
-  subtitle: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    marginTop: 6,
-    marginBottom: 24,
+  heroBtn: {
+    marginTop: 18,
+    backgroundColor: sentinel.bg,
+    paddingVertical: 12,
+    paddingHorizontal: 36,
+    borderRadius: 14,
+    minWidth: 160,
+    alignItems: 'center',
   },
-  list: {
-    paddingBottom: 32,
+  heroBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: sentinel.neon,
+    letterSpacing: 2,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  sectionLeft: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: sentinel.textMuted,
+    letterSpacing: 0.8,
+  },
+  sectionRight: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: sentinel.neon,
+    letterSpacing: 0.6,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    marginBottom: 12,
+    backgroundColor: sentinel.card,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: sentinel.cardBorder,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
   rowSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryDim,
+    borderColor: sentinel.neonDim,
+    backgroundColor: 'rgba(57, 255, 20, 0.04)',
   },
-  flag: {
-    fontSize: 28,
-    marginRight: 16,
+  rowAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: sentinel.neon,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
   },
-  rowContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  country: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  ping: {
-    fontSize: 14,
-    color: colors.accent,
-    fontWeight: '500',
-  },
-  check: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
+  flagCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: sentinel.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: sentinel.cardBorder,
   },
-  checkText: {
-    color: colors.background,
+  flagEmoji: {
+    fontSize: 26,
+  },
+  rowMain: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
+  },
+  cityText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: sentinel.text,
+    letterSpacing: 0.6,
+  },
+  detailText: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    color: sentinel.textLabel,
+    letterSpacing: 0.4,
+  },
+  latencyCol: {
+    alignItems: 'flex-end',
+    marginRight: 8,
+  },
+  latencyLabel: {
+    fontSize: 9,
     fontWeight: '700',
-    fontSize: 16,
+    color: sentinel.textLabel,
+    letterSpacing: 0.5,
+  },
+  latencyMs: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '700',
+    color: sentinel.text,
+  },
+  latencyMsActive: {
+    color: sentinel.neon,
+  },
+  starBtn: {
+    paddingVertical: 4,
+    paddingLeft: 4,
+  },
+  star: {
+    fontSize: 22,
+    color: sentinel.textLabel,
+  },
+  starOn: {
+    color: sentinel.yellow,
+  },
+  emptyWrap: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: sentinel.textMuted,
+    fontSize: 14,
   },
 });

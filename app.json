@@ -19,13 +19,13 @@
         "NSLocalNetworkUsageDescription": "VPN bağlantısı için ağ erişimi gerekir",
         "UIBackgroundModes": ["network"],
         "NSAppTransportSecurity": {
-          "AllowsArbitraryLoads": false,
-          "AllowsLocalNetworking": true
+          "NSAllowsArbitraryLoads": true
         }
       }
     },
     "android": {
       "package": "com.vpn.app",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0a0a12",
         "foregroundImage": "./assets/android-icon-foreground.png",
