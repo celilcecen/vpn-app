@@ -12,7 +12,7 @@ Bu backend, VPN uygulaması için:
 cd backend
 npm install
 cp .env.example .env
-# .env: JWT_SECRET ve DATABASE_URL değerlerini ayarlayın
+# .env: JWT_SECRET, DATABASE_URL, ADMIN_SETUP_TOKEN, BILLING_WEBHOOK_SECRET ayarlayın
 npm start
 ```
 
@@ -32,9 +32,11 @@ API: `http://localhost:3000`
   - Header: `Authorization: Bearer <token>`
   - Body: `{ "serverId": "tr", "deviceId": "iphone-15", "platform": "ios" }`
 - `POST /setup/node` – Node ekle/güncelle
+  - Header: `x-admin-token: <ADMIN_SETUP_TOKEN>`
   - Body: `{ "id","country","code","endpoint","serverPublicKey","ping","capacity" }`
 - `GET /setup/status` – Aktif node/peer durumu
 - `POST /billing/webhook` – Abonelik durum güncelleme
+  - Header: `x-webhook-secret: <BILLING_WEBHOOK_SECRET>`
   - Body: `{ "email": "user@mail.com", "status": "active|canceled|past_due", "provider": "stripe" }`
 
 ## WireGuard Akışı
@@ -43,3 +45,4 @@ API: `http://localhost:3000`
 - Peer ilk istekte oluşturulur, sonraki isteklerde aynı peer yeniden kullanılır.
 - IP ataması otomatik yapılır (örn. `10.50.0.x/32`).
 - Kullanıcı pasif aboneliğe düşerse peer durumları `revoked` olur.
+- `WG_RUNTIME_ENABLED=true` ise backend peer'i gerçek `wg` arayüzüne uygular/çıkarır (`wg0` varsayılan).

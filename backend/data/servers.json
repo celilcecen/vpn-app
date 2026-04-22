@@ -4,7 +4,7 @@
     "country": "Türkiye",
     "code": "TR",
     "ping": 8,
-    "endpoint": "192.168.1.4:51820",
+    "endpoint": "35.163.17.141:51820",
     "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
   },
   {
@@ -12,7 +12,7 @@
     "country": "Almanya",
     "code": "DE",
     "ping": 18,
-    "endpoint": "192.168.1.4:51820",
+    "endpoint": "35.163.17.141:51820",
     "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
   },
   {
@@ -20,7 +20,7 @@
     "country": "Hollanda",
     "code": "NL",
     "ping": 22,
-    "endpoint": "192.168.1.4:51820",
+    "endpoint": "35.163.17.141:51820",
     "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
   },
   {
@@ -28,7 +28,7 @@
     "country": "ABD",
     "code": "US",
     "ping": 95,
-    "endpoint": "192.168.1.4:51820",
+    "endpoint": "35.163.17.141:51820",
     "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
   }
 ]

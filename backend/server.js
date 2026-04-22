@@ -12,6 +12,12 @@ const billingRoutes = require('./routes/billing');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+function assertRequiredEnv(name) {
+  if (!process.env[name]) {
+    throw new Error(`${name} is required`);
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -26,6 +32,9 @@ app.get('/health', (req, res) => {
 });
 
 async function bootstrap() {
+  assertRequiredEnv('JWT_SECRET');
+  assertRequiredEnv('ADMIN_SETUP_TOKEN');
+  assertRequiredEnv('BILLING_WEBHOOK_SECRET');
   await initDb();
   app.listen(PORT, () => {
     console.log(`VPN Backend http://localhost:${PORT}`);

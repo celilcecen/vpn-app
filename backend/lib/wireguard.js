@@ -18,7 +18,8 @@ function generateWireGuardKeyPair() {
   };
 }
 
-function buildConfig({ clientPrivateKey, assignedIp, dns, serverPublicKey, endpoint }) {
+function buildConfig({ clientPrivateKey, assignedIp, dns, serverPublicKey, endpoint, allowedIPs }) {
+  const routes = allowedIPs || '0.0.0.0/0, ::/0';
   return `[Interface]
 PrivateKey = ${clientPrivateKey}
 Address = ${assignedIp}
@@ -27,7 +28,7 @@ DNS = ${dns || '1.1.1.1, 8.8.8.8'}
 [Peer]
 PublicKey = ${serverPublicKey}
 Endpoint = ${endpoint}
-AllowedIPs = 0.0.0.0/0, ::/0
+AllowedIPs = ${routes}
 PersistentKeepalive = 25
 `;
 }

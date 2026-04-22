@@ -93,7 +93,10 @@ export function VPNProvider({ children }) {
     setConnecting(true);
     setTunnelStatus('CONNECTING');
     try {
-      const data = await api.getConfig(serverId);
+      const data = await api.getConfig(serverId, {
+        routeMode: 'full',
+        dnsLeakProtection,
+      });
       const config = data?.config;
       if (typeof config !== 'string' || !config.trim()) {
         throw new Error('Sunucudan geçerli WireGuard yapılandırması alınamadı.');

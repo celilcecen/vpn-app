@@ -1,11 +1,34 @@
 const express = require('express');
 const { query } = require('../lib/db');
 const { generateWireGuardKeyPair, buildConfig } = require('../lib/wireguard');
+const { applyPeer } = require('../lib/wireguardRuntime');
 const { authMiddleware } = require('./auth');
 const router = express.Router();
 
 const DEVICE_LIMIT = Number(process.env.DEVICE_LIMIT || 3);
 const DEFAULT_DNS = process.env.DEFAULT_DNS || '1.1.1.1, 8.8.8.8';
+const ALLOW_PRIVATE_ENDPOINTS = process.env.ALLOW_PRIVATE_ENDPOINTS === 'true';
+
+function isPrivateIpv4(host) {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(host)) return false;
+  const [a, b] = host.split('.').map(Number);
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+function validateEndpoint(endpoint) {
+  const trimmed = String(endpoint || '').trim();
+  const match = trimmed.match(/^([^:]+):(\d{1,5})$/);
+  if (!match) return false;
+  const host = match[1];
+  const port = Number(match[2]);
+  if (!port || port > 65535) return false;
+  if (isPrivateIpv4(host) && !ALLOW_PRIVATE_ENDPOINTS) return false;
+  return true;
+}
 
 async function ensureActiveSubscription(userId) {
   const sub = await query('SELECT status FROM subscriptions WHERE user_id = $1 LIMIT 1', [userId]);
@@ -65,7 +88,13 @@ async function allocateIp(nodeId) {
 
 router.post('/config', authMiddleware, async (req, res) => {
   try {
-    const { serverId, deviceId = 'default-device', platform } = req.body;
+    const {
+      serverId,
+      deviceId = 'default-device',
+      platform,
+      routeMode = 'full',
+      dnsLeakProtection = true,
+    } = req.body;
     if (!serverId) {
       return res.status(400).json({ error: 'serverId gerekli' });
     }
@@ -87,6 +116,11 @@ router.post('/config', authMiddleware, async (req, res) => {
     if (!node) {
       return res.status(404).json({ error: 'Sunucu bulunamadı' });
     }
+    if (!validateEndpoint(node.endpoint)) {
+      return res.status(503).json({
+        error: 'Sunucu endpoint geçersiz veya private ağda. Public endpoint tanımlayın.',
+      });
+    }
 
     const activeCount = await query(
       "SELECT COUNT(*)::int AS count FROM vpn_peers WHERE node_id = $1 AND status = 'active'",
@@ -98,29 +132,36 @@ router.post('/config', authMiddleware, async (req, res) => {
 
     const dbDeviceId = await ensureDevice(req.user.userId, String(deviceId), platform);
     const existingPeer = await query(
-      "SELECT client_private_key, assigned_ip, dns FROM vpn_peers WHERE device_id = $1 AND node_id = $2 AND status = 'active' LIMIT 1",
+      "SELECT client_private_key, client_public_key, assigned_ip, dns FROM vpn_peers WHERE device_id = $1 AND node_id = $2 AND status = 'active' LIMIT 1",
       [dbDeviceId, serverId]
     );
 
     let clientPrivateKey;
+    let clientPublicKey;
     let assignedIp;
     let dns;
 
     if (existingPeer.rows[0]) {
       clientPrivateKey = existingPeer.rows[0].client_private_key;
+      clientPublicKey = existingPeer.rows[0].client_public_key;
       assignedIp = existingPeer.rows[0].assigned_ip;
       dns = existingPeer.rows[0].dns;
     } else {
       const keys = generateWireGuardKeyPair();
       assignedIp = await allocateIp(serverId);
-      dns = DEFAULT_DNS;
+      dns = dnsLeakProtection ? DEFAULT_DNS : '1.1.1.1';
       await query(
         `INSERT INTO vpn_peers (user_id, device_id, node_id, client_private_key, client_public_key, assigned_ip, dns, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')`,
         [req.user.userId, dbDeviceId, serverId, keys.privateKey, keys.publicKey, assignedIp, dns]
       );
       clientPrivateKey = keys.privateKey;
+      clientPublicKey = keys.publicKey;
     }
+
+    await applyPeer({ publicKey: clientPublicKey, assignedIp });
+
+    const allowedIPs = routeMode === 'split' ? '10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16' : '0.0.0.0/0, ::/0';
 
     const configString = buildConfig({
       clientPrivateKey,
@@ -128,6 +169,7 @@ router.post('/config', authMiddleware, async (req, res) => {
       dns,
       serverPublicKey: node.server_public_key,
       endpoint: node.endpoint,
+      allowedIPs,
     });
 
     return res.json({ config: configString });

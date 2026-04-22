@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// Production API (Lightsail). Yerel test için geçici olarak http://BILGISAYAR_LAN_IP:3000 kullanılabilir.
-let BASE_URL = 'http://35.163.17.141';
+const BASE_URL_KEY = 'vpn.baseUrl';
+const DEFAULT_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://35.163.17.141';
+let BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
 const DEVICE_ID_KEY = 'vpn.deviceId';
 
 let authToken = null;
@@ -13,6 +14,22 @@ export function setAuthToken(token) {
 
 export function getAuthToken() {
   return authToken;
+}
+
+export function getBaseUrl() {
+  return BASE_URL;
+}
+
+function validateBaseUrl(url) {
+  const normalized = String(url || '').trim();
+  if (!normalized) throw new Error('API adresi boş olamaz');
+  const parsed = new URL(normalized);
+  const isLocalHost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  const isPrivateIp = /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[0-1])\./.test(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !__DEV__ && !isLocalHost && !isPrivateIp) {
+    throw new Error('Canlı kullanımda HTTPS API zorunludur');
+  }
+  return normalized.replace(/\/$/, '');
 }
 
 async function request(path, options = {}) {
@@ -58,7 +75,7 @@ export const api = {
   async getServers() {
     return request('/servers');
   },
-  async getConfig(serverId) {
+  async getConfig(serverId, options = {}) {
     const deviceId = await getOrCreateDeviceId();
     return request('/vpn/config', {
       method: 'POST',
@@ -66,6 +83,8 @@ export const api = {
         serverId,
         deviceId,
         platform: Platform.OS,
+        routeMode: options.routeMode || 'full',
+        dnsLeakProtection: options.dnsLeakProtection !== false,
       }),
     });
   },
@@ -95,6 +114,14 @@ export const api = {
   },
 };
 
-export function setBaseUrl(url) {
-  BASE_URL = url.replace(/\/$/, '');
+export async function initApiConfig() {
+  try {
+    const saved = await AsyncStorage.getItem(BASE_URL_KEY);
+    if (saved) BASE_URL = validateBaseUrl(saved);
+  } catch (_) {}
+}
+
+export async function setBaseUrl(url) {
+  BASE_URL = validateBaseUrl(url);
+  await AsyncStorage.setItem(BASE_URL_KEY, BASE_URL);
 }

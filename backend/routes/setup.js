@@ -1,8 +1,20 @@
 const express = require('express');
 const { query } = require('../lib/db');
 const router = express.Router();
+const ADMIN_SETUP_TOKEN = process.env.ADMIN_SETUP_TOKEN;
 
-router.post('/node', async (req, res) => {
+function requireAdmin(req, res, next) {
+  if (!ADMIN_SETUP_TOKEN) {
+    return res.status(503).json({ error: 'ADMIN_SETUP_TOKEN tanımlı değil' });
+  }
+  const token = req.headers['x-admin-token'];
+  if (!token || token !== ADMIN_SETUP_TOKEN) {
+    return res.status(401).json({ error: 'Yetkisiz istek' });
+  }
+  return next();
+}
+
+router.post('/node', requireAdmin, async (req, res) => {
   try {
     const { id, country, code, endpoint, serverPublicKey, ping = 0, capacity = 500 } = req.body || {};
     if (!id || !country || !code || !endpoint || !serverPublicKey) {

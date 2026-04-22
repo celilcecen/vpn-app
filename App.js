@@ -17,6 +17,7 @@ import PurchaseScreen from './src/screens/PurchaseScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import LogsScreen from './src/screens/LogsScreen';
 import { sentinel } from './src/theme/sentinel';
+import { initApiConfig } from './src/api/client';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -63,8 +64,8 @@ function MainApp() {
 
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(ONBOARDING_KEY)
-      .then((seen) => {
+    Promise.all([AsyncStorage.getItem(ONBOARDING_KEY), initApiConfig()])
+      .then(([seen]) => {
         if (!active) return;
         setShowOnboarding(!seen);
       })

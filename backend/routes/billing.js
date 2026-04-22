@@ -1,8 +1,10 @@
 const express = require('express');
 const { query } = require('../lib/db');
+const { removePeer } = require('../lib/wireguardRuntime');
 const { authMiddleware } = require('./auth');
 
 const router = express.Router();
+const BILLING_WEBHOOK_SECRET = process.env.BILLING_WEBHOOK_SECRET;
 
 const PLANS = [
   { id: 'basic-monthly', title: 'Basic Aylık', price: 4.99, currency: 'USD', period: 'month', maxDevices: 1 },
@@ -61,6 +63,14 @@ router.post('/purchase', authMiddleware, async (req, res) => {
 
 router.post('/webhook', async (req, res) => {
   try {
+    if (!BILLING_WEBHOOK_SECRET) {
+      return res.status(503).json({ error: 'BILLING_WEBHOOK_SECRET tanımlı değil' });
+    }
+    const providedSecret = req.headers['x-webhook-secret'];
+    if (!providedSecret || providedSecret !== BILLING_WEBHOOK_SECRET) {
+      return res.status(401).json({ error: 'Geçersiz webhook imzası' });
+    }
+
     const { email, status, provider = 'manual', renewAt } = req.body || {};
     if (!email || !status) {
       return res.status(400).json({ error: 'email ve status zorunlu' });
@@ -82,6 +92,15 @@ router.post('/webhook', async (req, res) => {
     );
 
     if (status !== 'active') {
+      const activePeers = await query(
+        "SELECT client_public_key FROM vpn_peers WHERE user_id = $1 AND status = 'active'",
+        [user.id]
+      );
+      for (const peer of activePeers.rows) {
+        try {
+          await removePeer({ publicKey: peer.client_public_key });
+        } catch (_) {}
+      }
       await query("UPDATE vpn_peers SET status = 'revoked' WHERE user_id = $1 AND status = 'active'", [user.id]);
     }
 

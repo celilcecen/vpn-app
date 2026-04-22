@@ -27,9 +27,6 @@ async function initDb() {
 }
 
 async function seedFromJsonIfEmpty() {
-  const nodeCount = await query('SELECT COUNT(*)::int AS count FROM vpn_nodes');
-  if (nodeCount.rows[0].count > 0) return;
-
   const serversPath = path.join(__dirname, '../data/servers.json');
   if (!fs.existsSync(serversPath)) return;
 
@@ -38,7 +35,13 @@ async function seedFromJsonIfEmpty() {
     await query(
       `INSERT INTO vpn_nodes (id, country, code, endpoint, server_public_key, ping, status, capacity)
        VALUES ($1, $2, $3, $4, $5, $6, 'active', 500)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE
+       SET country = EXCLUDED.country,
+           code = EXCLUDED.code,
+           endpoint = EXCLUDED.endpoint,
+           server_public_key = EXCLUDED.server_public_key,
+           ping = EXCLUDED.ping,
+           status = 'active'`,
       [server.id, server.country, server.code, server.endpoint, server.serverPublicKey, server.ping || 0]
     );
   }

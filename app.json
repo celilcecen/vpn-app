@@ -13,19 +13,19 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vpn.app",
+      "bundleIdentifier": "com.celilcecen.guardlanevpn",
       "buildNumber": "1",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "VPN bağlantısı için ağ erişimi gerekir",
-        "UIBackgroundModes": ["network"],
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true
-        }
+          "NSAllowsArbitraryLoads": false
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.vpn.app",
-      "usesCleartextTraffic": true,
+      "package": "com.celilcecen.guardlanevpn",
+      "usesCleartextTraffic": false,
       "adaptiveIcon": {
         "backgroundColor": "#0a0a12",
         "foregroundImage": "./assets/android-icon-foreground.png",
