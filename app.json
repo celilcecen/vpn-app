@@ -14,8 +14,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.celilcecen.guardlanevpn",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
+        "NSNetworkExtensionUsageDescription": "VPN tüneli oluşturmak ve trafiğinizi korumak için ağ uzantısı kullanılır.",
         "NSLocalNetworkUsageDescription": "VPN bağlantısı için ağ erişimi gerekir",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false
@@ -35,6 +36,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b0126b19-8548-4204-96b8-360500dad2b0"
+      }
+    },
+    "owner": "celilcecen"
   }
 }

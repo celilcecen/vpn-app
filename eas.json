@@ -24,7 +24,15 @@
         "buildType": "apk"
       },
       "ios": {
-        "autoIncrement": true
+        "autoIncrement": true,
+        "distribution": "store"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "celilcecen@gmail.com"
       }
     }
   }
