@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 const BASE_URL_KEY = 'vpn.baseUrl';
-const DEFAULT_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://35.163.17.141';
+const DEFAULT_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || 'https://api.guardline.online';
 let BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
 const DEVICE_ID_KEY = 'vpn.deviceId';
 
