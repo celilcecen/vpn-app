@@ -35,7 +35,7 @@ export default function SettingsScreen({ navigation }) {
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.logoRow}>
           <Text style={styles.logoShield}>🛡</Text>
-          <Text style={styles.logoText}>SENTINEL</Text>
+          <Text style={styles.logoText}>GuardLine</Text>
         </View>
         <TouchableOpacity style={styles.profileBtn} activeOpacity={0.7}>
           <Text style={styles.profileIcon}>👤</Text>
@@ -131,7 +131,7 @@ export default function SettingsScreen({ navigation }) {
           </View>
           <Text style={styles.toggleTitle}>DNS Leak Protection</Text>
           <Text style={styles.toggleDesc}>
-            Prefer routing DNS through Sentinel while connected so resolvers align with the tunnel.
+            Prefer routing DNS through GuardLine while connected so resolvers align with the tunnel.
           </Text>
         </View>
 
@@ -222,7 +222,7 @@ export default function SettingsScreen({ navigation }) {
         <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.85}>
           <Text style={styles.logoutText}>Sign out</Text>
         </TouchableOpacity>
-        <Text style={styles.version}>SENTINEL • v1.0.0</Text>
+        <Text style={styles.version}>GuardLine • v1.0.0</Text>
       </ScrollView>
     </View>
   );
@@ -252,8 +252,11 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 20,
     fontWeight: '900',
-    color: sentinel.neon,
+    color: '#39FF14',
     letterSpacing: 2,
+    textShadowColor: 'rgba(57, 255, 20, 0.75)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   profileBtn: {
     width: 40,
@@ -636,3 +639,4 @@ const styles = StyleSheet.create({
     color: sentinel.textLabel,
   },
 });
+

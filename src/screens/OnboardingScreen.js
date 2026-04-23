@@ -28,7 +28,7 @@ export default function OnboardingScreen({ onContinue }) {
         { paddingTop: insets.top + 24, opacity: fade, transform: [{ translateY: translate }] },
       ]}
     >
-      <Text style={styles.brand}>GuardLane</Text>
+      <Text style={styles.brand}>GuardLine</Text>
       <Text style={styles.subtitle}>Dijital gizliliğini tek merkezden yönet.</Text>
 
       <View style={styles.features}>
@@ -58,10 +58,13 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   brand: {
-    color: colors.text,
+    color: '#39FF14',
     fontSize: 36,
     fontWeight: '700',
     letterSpacing: 0.5,
+    textShadowColor: 'rgba(57, 255, 20, 0.7)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   subtitle: {
     color: colors.textSecondary,
@@ -109,3 +112,4 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
 });
+

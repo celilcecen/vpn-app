@@ -72,7 +72,7 @@ export default function LoginScreen() {
       style={[styles.container, { paddingTop: insets.top + 40 }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={styles.brand}>GuardLane</Text>
+      <Text style={styles.brand}>GuardLine</Text>
       <Text style={styles.subtitle}>
         {forgotMode
           ? 'Hesabınızı kurtarmak için email adresinizi girin'
@@ -159,9 +159,12 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 34,
     fontWeight: '700',
-    color: colors.text,
+    color: '#39FF14',
     marginBottom: 8,
     letterSpacing: 0.6,
+    textShadowColor: 'rgba(57, 255, 20, 0.7)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   subtitle: {
     fontSize: 15,
@@ -211,3 +214,4 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
 });
+

@@ -136,7 +136,7 @@ export default function HomeScreen({ navigation }) {
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.logoRow}>
           <Text style={styles.logoShield}>🛡</Text>
-          <Text style={styles.logoText}>SENTINEL</Text>
+          <Text style={styles.logoText}>GuardLine</Text>
         </View>
         <View style={styles.headerIcons}>
           <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
@@ -346,8 +346,11 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 20,
     fontWeight: '900',
-    color: sentinel.neon,
+    color: '#39FF14',
     letterSpacing: 2,
+    textShadowColor: 'rgba(57, 255, 20, 0.75)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   headerIcons: {
     flexDirection: 'row',
@@ -579,3 +582,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+

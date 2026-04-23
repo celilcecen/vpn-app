@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api, setAuthToken, getAuthToken } from '../api/client';
+import { api, setAuthToken, getBaseUrl } from '../api/client';
 
 const TOKEN_KEY = '@vpn_token';
 const AuthContext = createContext(null);
@@ -8,11 +8,15 @@ const AuthContext = createContext(null);
 function mapAuthError(err, mode) {
   const status = err?.status;
   const fallback = mode === 'register' ? 'Kayıt başarısız.' : 'Giriş başarısız.';
+  const message = String(err?.message || '');
 
   if (status === 400) return err?.message || 'Email veya şifre formatı geçersiz.';
   if (status === 401) return 'Email veya şifre hatalı.';
   if (status === 409) return 'Bu email zaten kayıtlı.';
   if (status >= 500) return 'Sunucu hatası. Lütfen tekrar deneyin.';
+  if (/network request failed|failed to fetch|load failed/i.test(message)) {
+    return `Sunucuya baglanilamadi. API: ${getBaseUrl()}`;
+  }
   return err?.message || fallback;
 }
 

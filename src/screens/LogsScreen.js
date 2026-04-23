@@ -100,7 +100,7 @@ export default function LogsScreen() {
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.logoRow}>
           <Text style={styles.logoShield}>🛡</Text>
-          <Text style={styles.logoText}>SENTINEL</Text>
+          <Text style={styles.logoText}>GuardLine</Text>
         </View>
         <TouchableOpacity style={styles.profileBtn} activeOpacity={0.7}>
           <Text style={styles.profileIcon}>👤</Text>
@@ -218,8 +218,11 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 20,
     fontWeight: '900',
-    color: sentinel.neon,
+    color: '#39FF14',
     letterSpacing: 2,
+    textShadowColor: 'rgba(57, 255, 20, 0.75)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   profileBtn: {
     width: 40,
@@ -442,3 +445,4 @@ const styles = StyleSheet.create({
     color: sentinel.yellow,
   },
 });
+

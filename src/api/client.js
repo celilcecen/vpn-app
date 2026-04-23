@@ -6,6 +6,7 @@ const DEFAULT_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || 'https://api.guardline.online';
 let BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
 const DEVICE_ID_KEY = 'vpn.deviceId';
+const LEGACY_HOSTS = new Set(['35.163.17.141', 'api.guardline.online']);
 
 let authToken = null;
 
@@ -118,7 +119,20 @@ export const api = {
 export async function initApiConfig() {
   try {
     const saved = await AsyncStorage.getItem(BASE_URL_KEY);
-    if (saved) BASE_URL = validateBaseUrl(saved);
+    if (saved) {
+      const normalized = validateBaseUrl(saved);
+      const parsed = new URL(normalized);
+      const isLegacyIp = parsed.hostname === '35.163.17.141';
+      const isLegacyApiDomain = parsed.hostname === 'api.guardline.online' && parsed.protocol !== 'https:';
+      const isLegacyHttp = LEGACY_HOSTS.has(parsed.hostname) && parsed.protocol !== 'https:';
+      const mustUseProdApi = !__DEV__ && parsed.hostname !== 'api.guardline.online';
+      if (isLegacyIp || isLegacyApiDomain || isLegacyHttp || mustUseProdApi) {
+        BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
+        await AsyncStorage.setItem(BASE_URL_KEY, BASE_URL);
+      } else {
+        BASE_URL = normalized;
+      }
+    }
   } catch (_) {}
 }
 
