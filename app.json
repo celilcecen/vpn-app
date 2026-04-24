@@ -37,6 +37,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": ["react-native-wireguard-vpn", "@bacons/apple-targets"],
     "extra": {
       "eas": {
         "projectId": "b0126b19-8548-4204-96b8-360500dad2b0"
