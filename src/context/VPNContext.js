@@ -83,16 +83,20 @@ export function VPNProvider({ children }) {
       return;
     }
 
-    const serverId =
-      routeMode === 'manual'
-        ? selectedServer.id === 'auto'
-          ? pickBestServer(servers, 'non_tr')
-          : selectedServer.id
-        : pickBestServer(servers, routeMode);
-
     setConnecting(true);
     setTunnelStatus('CONNECTING');
     try {
+      const safeSelected = selectedServer || DEFAULT_SERVER;
+      const serverId =
+        routeMode === 'manual'
+          ? safeSelected.id === 'auto'
+            ? pickBestServer(servers, 'non_tr')
+            : safeSelected.id
+          : pickBestServer(servers, routeMode);
+
+      if (!api || typeof api.getConfig !== 'function') {
+        throw new Error('API istemcisi hazir degil.');
+      }
       const data = await api.getConfig(serverId, {
         routeMode: 'full',
         dnsLeakProtection,
@@ -101,10 +105,14 @@ export function VPNProvider({ children }) {
       if (typeof config !== 'string' || !config.trim()) {
         throw new Error('Sunucudan geçerli WireGuard yapılandırması alınamadı.');
       }
+      if (typeof tunnel.prepare !== 'function' || typeof tunnel.connect !== 'function') {
+        throw new Error('VPN modulu hazir degil.');
+      }
       await tunnel.prepare();
       await tunnel.connect(config.trim());
 
-      const up = await tunnel.waitUntilUp(12000, 500);
+      const waitUntilUp = typeof tunnel.waitUntilUp === 'function' ? tunnel.waitUntilUp : null;
+      const up = waitUntilUp ? await waitUntilUp(12000, 500) : true;
       if (!up) {
         throw new Error('VPN tüneli zamanında aktif olmadı. Lütfen tekrar deneyin.');
       }
@@ -112,6 +120,7 @@ export function VPNProvider({ children }) {
       setConnected(true);
       setTunnelStatus('UP');
       try {
+        if (typeof api.getPublicIpInfo !== 'function') return;
         const ip = await api.getPublicIpInfo();
         setExitInfo(ip);
       } catch (_) {}
@@ -122,6 +131,7 @@ export function VPNProvider({ children }) {
       const nativeMissing =
         msg === 'NATIVE_MODULE_MISSING' ||
         msg.includes('NATIVE_MODULE_MISSING') ||
+        /undefined is not a function/i.test(msg) ||
         /native module is not available|TurboModuleRegistry|could not be found/i.test(msg);
 
       if (nativeMissing) {
@@ -144,7 +154,7 @@ export function VPNProvider({ children }) {
     } finally {
       setConnecting(false);
     }
-  }, [connected, connecting, selectedServer, servers, routeMode]);
+  }, [connected, connecting, selectedServer, servers, routeMode, dnsLeakProtection]);
 
   const selectServer = useCallback((server) => {
     setSelectedServer(server);

@@ -30,6 +30,7 @@ export async function connect(configString) {
     const msg = String((e && e.message) || e || '');
     if (
       msg === 'NATIVE_MODULE_MISSING' ||
+      /undefined is not a function/i.test(msg) ||
       /TurboModuleRegistry|Native module.*[Ww]ireguard|Unimplemented component|cannot find native module/i.test(
         msg
       )

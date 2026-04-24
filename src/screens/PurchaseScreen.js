@@ -16,8 +16,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api/client';
 import { colors } from '../theme/colors';
-import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
+import {
+  hapticImpactLight,
+  hapticImpactMedium,
+  hapticNotifySuccess,
+  hapticSelection,
+} from '../utils/haptics';
 
 function formatPrice(value, currency) {
   return `${value.toFixed(2)} ${currency}`;
@@ -107,13 +112,8 @@ export default function PurchaseScreen() {
   const openPlanSheet = async (plan) => {
     setSelectedPlan(plan);
     setSheetVisible(true);
-    try {
-      if (Platform.OS === 'ios') {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } else {
-        await Haptics.selectionAsync();
-      }
-    } catch (_) {}
+    if (Platform.OS === 'ios') await hapticImpactLight();
+    else await hapticSelection();
   };
 
   const closeSheet = () => {
@@ -124,25 +124,15 @@ export default function PurchaseScreen() {
     setBuyingPlanId(planId);
     try {
       const result = await api.purchasePlan(planId);
-      try {
-        if (Platform.OS === 'ios') {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }
-      } catch (_) {}
+      if (Platform.OS === 'ios') await hapticNotifySuccess();
+      else await hapticImpactMedium();
       runConfetti();
       Alert.alert('Başarılı', result?.message || 'Plan satın alındı.');
       await load();
       closeSheet();
     } catch (err) {
-      try {
-        if (Platform.OS === 'ios') {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        } else {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        }
-      } catch (_) {}
+      if (Platform.OS === 'ios') await hapticImpactMedium();
+      else await hapticImpactMedium();
       Alert.alert('Hata', err.message || 'Satın alma başarısız.');
     } finally {
       setBuyingPlanId(null);
@@ -160,13 +150,8 @@ export default function PurchaseScreen() {
     }).start(async ({ finished }) => {
       if (!finished || !selectedPlan) return;
       setHoldReady(true);
-      try {
-        if (Platform.OS === 'ios') {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
-        } else {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }
-      } catch (_) {}
+      if (Platform.OS === 'ios') await hapticImpactMedium();
+      else await hapticImpactMedium();
       onPurchase(selectedPlan.id);
     });
   };

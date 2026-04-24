@@ -9,11 +9,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 import { useVPN } from '../context/VPNContext';
 import { sentinel } from '../theme/sentinel';
 import { getFlag } from '../utils/flags';
 import { displayForServer } from '../utils/serverDisplay';
+import { hapticImpactLight, hapticNotifySuccess, hapticSelection } from '../utils/haptics';
 
 function activeNodeCount(serverCount) {
   const n = Math.max(1, serverCount);
@@ -42,7 +42,7 @@ export default function ServersScreen({ navigation }) {
 
   const toggleFavorite = useCallback((id) => {
     if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      hapticImpactLight();
     }
     setFavorites((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
@@ -50,7 +50,7 @@ export default function ServersScreen({ navigation }) {
   const onSmartConnect = useCallback(() => {
     if (autoServer) selectServer(autoServer);
     if (Platform.OS === 'ios') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      hapticNotifySuccess();
     }
     navigation.navigate('Home');
   }, [autoServer, navigation, selectServer]);
@@ -67,7 +67,7 @@ export default function ServersScreen({ navigation }) {
           style={[styles.row, isSelected && styles.rowSelected]}
           onPress={() => {
             if (Platform.OS === 'ios') {
-              Haptics.selectionAsync().catch(() => {});
+              hapticSelection();
             }
             selectServer(item);
           }}

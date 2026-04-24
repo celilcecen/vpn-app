@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVPN } from '../context/VPNContext';
 import { sentinel } from '../theme/sentinel';
-import * as Haptics from 'expo-haptics';
+import { hapticImpactLight, hapticImpactMedium, hapticSelection } from '../utils/haptics';
 
 function formatDuration(totalSec) {
   const h = Math.floor(totalSec / 3600);
@@ -111,9 +111,9 @@ export default function HomeScreen({ navigation }) {
 
   const onPressIn = () => {
     if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      hapticImpactLight();
     } else {
-      Haptics.selectionAsync().catch(() => {});
+      hapticSelection();
     }
     Animated.timing(scaleAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }).start();
   };
@@ -166,7 +166,7 @@ export default function HomeScreen({ navigation }) {
             />
             <Pressable
               onPress={() => {
-                void toggleConnection();
+                Promise.resolve(toggleConnection()).catch(() => {});
               }}
               onPressIn={onPressIn}
               onPressOut={onPressOut}
@@ -273,9 +273,9 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.85}
           onPress={() => {
             if (Platform.OS === 'ios') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              hapticImpactMedium();
             } else {
-              Haptics.selectionAsync().catch(() => {});
+              hapticSelection();
             }
             navigation.navigate('Servers');
           }}
