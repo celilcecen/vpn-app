@@ -1,0 +1,419 @@
+diff --git a/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m b/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m
+index 426514b..bfddfe9 100644
+--- a/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m
++++ b/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m
+@@ -1,8 +1,77 @@
+ #import "WireGuardVpn.h"
+ #import <NetworkExtension/NetworkExtension.h>
++#import <React/RCTConvert.h>
++
++static NSString *WGTrim(id v)
++{
++  if (v == nil || v == (id)kCFNull) {
++    return @"";
++  }
++  if ([v isKindOfClass:[NSString class]]) {
++    return [(NSString *)v stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++  }
++  if ([v isKindOfClass:[NSNumber class]]) {
++    return [[(NSNumber *)v stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++  }
++  return @"";
++}
++
++static NSString *WGStrFromDict(NSDictionary *c, NSArray<NSString *> *keys)
++{
++  for (NSString *k in keys) {
++    NSString *s = WGTrim(c[k]);
++    if (s.length > 0) {
++      return s;
++    }
++  }
++  return @"";
++}
++
++static NSInteger WGIntPort(id raw)
++{
++  if (raw == nil || raw == (id)kCFNull) {
++    return 0;
++  }
++  if ([raw isKindOfClass:[NSNumber class]]) {
++    return [(NSNumber *)raw integerValue];
++  }
++  if ([raw isKindOfClass:[NSString class]]) {
++    return [(NSString *)raw integerValue];
++  }
++  return 0;
++}
++
++static void WGCollectAllowedIPs(NSDictionary *c, NSMutableArray *out)
++{
++  id a = c[@"allowedIPs"];
++  if (a == nil) {
++    a = c[@"allowed_ips"];
++  }
++  if (a == nil) {
++    a = c[@"AllowedIPs"];
++  }
++  if ([a isKindOfClass:[NSString class]]) {
++    for (NSString *p in [(NSString *)a componentsSeparatedByString:@","]) {
++      NSString *t = [p stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++      if (t.length > 0) {
++        [out addObject:t];
++      }
++    }
++    return;
++  }
++  if ([a isKindOfClass:[NSArray class]]) {
++    for (id o in (NSArray *)a) {
++      NSString *t = WGTrim(o);
++      if (t.length > 0) {
++        [out addObject:t];
++      }
++    }
++  }
++}
+ 
+ @implementation WireGuardVpn {
+   id _neStatusObserver;
++  BOOL _hasListeners;
+ }
+ 
+ RCT_EXPORT_MODULE(WireGuardVpnModule)
+@@ -15,6 +84,7 @@ RCT_EXPORT_MODULE(WireGuardVpnModule)
+ // RN will call these when JS starts/stops listening to events.
+ - (void)startObserving
+ {
++  _hasListeners = YES;
+   if (_neStatusObserver != nil) return;
+ 
+   __weak typeof(self) weakSelf = self;
+@@ -29,16 +99,22 @@ RCT_EXPORT_MODULE(WireGuardVpnModule)
+ 
+ - (void)stopObserving
+ {
++  _hasListeners = NO;
+   if (_neStatusObserver == nil) return;
+   [[NSNotificationCenter defaultCenter] removeObserver:_neStatusObserver];
+   _neStatusObserver = nil;
+ }
+ 
++- (BOOL)hasListeners
++{
++  return _hasListeners;
++}
++
+ - (void)emitVpnStateChanged
+ {
+   if (![self hasListeners]) return;
+ 
+-  NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++  NSString *providerBundleIdentifier = @"com.celilcecen.guardlanevpn.wireguardtunnel";
+   [NETunnelProviderManager loadAllFromPreferencesWithCompletionHandler:^(NSArray<NETunnelProviderManager *> * _Nullable managers, NSError * _Nullable error) {
+     if (error || managers == nil) return;
+ 
+@@ -83,42 +159,89 @@ RCT_EXPORT_METHOD(initialize:(RCTPromiseResolveBlock)resolve
+       reject(@"INIT_ERROR", error.localizedDescription, error);
+       return;
+     }
+-    
+-    NETunnelProviderManager *manager = managers.firstObject ?: [[NETunnelProviderManager alloc] init];
+-    manager.localizedDescription = @"WireGuard VPN";
+-    manager.protocolConfiguration = [[NETunnelProviderProtocol alloc] init];
+-    
+-    [manager saveToPreferencesWithCompletionHandler:^(NSError * _Nullable error) {
+-      if (error) {
+-        reject(@"INIT_ERROR", error.localizedDescription, error);
+-        return;
+-      }
+-      resolve(nil);
+-    }];
++    // IMPORTANT: Do not save an empty NETunnelProviderProtocol here. The stock library did:
++    //   manager.protocolConfiguration = [[NETunnelProviderProtocol alloc] init];
++    //   saveToPreferences
++    // That wipes serverAddress / providerConfiguration and iOS then fails connect with
++    // "Missing server address". Real config is applied in connect() only.
++    resolve(nil);
+   }];
+ }
+ 
+-RCT_EXPORT_METHOD(connect:(NSDictionary *)config
+-                  resolver:(RCTPromiseResolveBlock)resolve
+-                  rejecter:(RCTPromiseRejectBlock)reject)
++- (void)wireGuardConnectWithDictionary:(NSDictionary *)config
++                                resolver:(RCTPromiseResolveBlock)resolve
++                                rejecter:(RCTPromiseRejectBlock)reject
+ {
+-  // Validate required config early for clearer errors.
+-  NSString *serverAddress = config[@"serverAddress"];
+-  id serverPort = config[@"serverPort"];
+-  NSString *privateKey = config[@"privateKey"];
+-  NSString *publicKey = config[@"publicKey"];
+-  id allowedIPs = config[@"allowedIPs"];
+-
+-  BOOL hasRequired =
+-      (serverAddress && ![serverAddress isKindOfClass:[NSNull class]]) &&
+-      (privateKey && ![privateKey isKindOfClass:[NSNull class]]) &&
+-      (publicKey && ![publicKey isKindOfClass:[NSNull class]]) &&
+-      serverPort &&
+-      (allowedIPs && [allowedIPs isKindOfClass:[NSArray class]] && [(NSArray *)allowedIPs count] > 0);
+-
+-  if (!hasRequired) {
++  NSString *serverAddress = WGStrFromDict(config, @[ @"serverAddress", @"server_address", @"host" ]);
++  NSInteger portInt = WGIntPort(config[@"serverPort"] ?: config[@"server_port"]);
++  if (portInt <= 0) {
++    portInt = WGIntPort(config[@"port"]);
++  }
++
++  if (serverAddress.length == 0 || portInt <= 0 || portInt > 65535) {
++    NSString *ep = WGStrFromDict(config, @[ @"endpoint", @"Endpoint", @"serverEndpoint" ]);
++    if (ep.length > 0) {
++      NSRange bracket = [ep rangeOfString:@"]" options:0];
++      if (ep.length > 0 && [ep hasPrefix:@"["] && bracket.location != NSNotFound && bracket.location + 2 < ep.length) {
++        NSString *host = [[ep substringWithRange:NSMakeRange(1, bracket.location - 1)]
++            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++        NSString *rest = [[ep substringFromIndex:bracket.location + 1]
++            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++        if ([rest hasPrefix:@":"] && rest.length > 1) {
++          NSString *ps = [[rest substringFromIndex:1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++          NSInteger p = [ps integerValue];
++          if (host.length > 0 && p > 0 && p <= 65535) {
++            serverAddress = host;
++            portInt = p;
++          }
++        }
++      } else {
++        NSRange r = [ep rangeOfString:@":" options:NSBackwardsSearch];
++        if (r.location != NSNotFound && r.location + 1 < ep.length) {
++          NSString *host = [[ep substringToIndex:r.location]
++              stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++          NSString *ps = [[ep substringFromIndex:r.location + 1]
++              stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
++          NSInteger p = [ps integerValue];
++          if (host.length > 0 && p > 0 && p <= 65535) {
++            serverAddress = host;
++            portInt = p;
++          }
++        }
++      }
++    }
++  }
++
++  NSString *privateKey = WGStrFromDict(config, @[ @"privateKey", @"private_key" ]);
++  NSString *publicKey = WGStrFromDict(config, @[ @"publicKey", @"public_key", @"peerPublicKey" ]);
++
++  NSMutableArray *allowedIPStrings = [NSMutableArray array];
++  WGCollectAllowedIPs(config, allowedIPStrings);
++
++  NSNumber *serverPortNum = @(portInt);
++
++  NSMutableString *missing = [NSMutableString string];
++  if (serverAddress.length == 0) {
++    [missing appendString:@" serverAddress"];
++  }
++  if (portInt <= 0 || portInt > 65535) {
++    [missing appendString:@" serverPort"];
++  }
++  if (privateKey.length == 0) {
++    [missing appendString:@" privateKey"];
++  }
++  if (publicKey.length == 0) {
++    [missing appendString:@" publicKey"];
++  }
++  if (allowedIPStrings.count == 0) {
++    [missing appendString:@" allowedIPs"];
++  }
++
++  if (missing.length > 0) {
++    NSArray *allKeys = config.allKeys ?: @[];
++    NSString *keyList = [allKeys componentsJoinedByString:@","];
+     reject(@"CONNECT_ERROR",
+-           @"Missing required config: serverAddress, serverPort, privateKey, publicKey, allowedIPs (non-empty array)",
++           [NSString stringWithFormat:@"VPN config missing:%@. Keys seen: [%@]", missing, keyList],
+            nil);
+     return;
+   }
+@@ -129,9 +252,8 @@ RCT_EXPORT_METHOD(connect:(NSDictionary *)config
+       return;
+     }
+ 
+-    NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++    NSString *providerBundleIdentifier = @"com.celilcecen.guardlanevpn.wireguardtunnel";
+ 
+-    // Pick the correct NETunnelProviderManager (do not assume firstObject).
+     NETunnelProviderManager *manager = nil;
+     for (NETunnelProviderManager *m in managers) {
+       if (![m.protocolConfiguration isKindOfClass:[NETunnelProviderProtocol class]]) {
+@@ -156,16 +278,31 @@ RCT_EXPORT_METHOD(connect:(NSDictionary *)config
+       protocol = [[NETunnelProviderProtocol alloc] init];
+     }
+ 
+-    protocol.serverAddress = config[@"serverAddress"];
++    protocol.serverAddress = serverAddress;
+     protocol.providerBundleIdentifier = providerBundleIdentifier;
+ 
+     NSMutableDictionary *tunnelConfig = [NSMutableDictionary dictionary];
+-    tunnelConfig[@"privateKey"] = config[@"privateKey"];
+-    tunnelConfig[@"publicKey"] = config[@"publicKey"];
+-    tunnelConfig[@"serverPort"] = config[@"serverPort"];
+-    tunnelConfig[@"allowedIPs"] = config[@"allowedIPs"];
+-    tunnelConfig[@"dns"] = config[@"dns"];
+-    tunnelConfig[@"mtu"] = config[@"mtu"];
++    tunnelConfig[@"privateKey"] = privateKey;
++    tunnelConfig[@"publicKey"] = publicKey;
++    tunnelConfig[@"serverAddress"] = serverAddress;
++    tunnelConfig[@"serverPort"] = serverPortNum;
++    tunnelConfig[@"endpoint"] = [NSString stringWithFormat:@"%@:%ld", serverAddress, (long)portInt];
++    tunnelConfig[@"allowedIPs"] = allowedIPStrings;
++    NSString *ifAddr = WGStrFromDict(config, @[ @"address", @"tunnelAddress", @"interfaceAddress" ]);
++    if (ifAddr.length > 0) {
++      tunnelConfig[@"address"] = ifAddr;
++    }
++    id dnsVal = config[@"dns"];
++    if (dnsVal != nil && dnsVal != (id)[NSNull null]) {
++      NSArray *dnsList = [RCTConvert NSArray:dnsVal];
++      if (dnsList != nil && dnsList.count > 0) {
++        tunnelConfig[@"dns"] = dnsList;
++      }
++    }
++    NSNumber *mtuNum = [RCTConvert NSNumber:config[@"mtu"]];
++    if (mtuNum != nil) {
++      tunnelConfig[@"mtu"] = mtuNum;
++    }
+ 
+     protocol.providerConfiguration = tunnelConfig;
+ 
+@@ -177,19 +314,78 @@ RCT_EXPORT_METHOD(connect:(NSDictionary *)config
+         return;
+       }
+ 
+-      NSError *startError;
+-      [manager.connection startVPNTunnelAndReturnError:&startError];
++      // iOS can use stale in-memory configuration right after save.
++      // Reload before start to avoid intermittent "Missing server address".
++      [manager loadFromPreferencesWithCompletionHandler:^(NSError * _Nullable reloadError) {
++        if (reloadError) {
++          reject(@"CONNECT_ERROR", reloadError.localizedDescription, reloadError);
++          return;
++        }
+ 
+-      if (startError) {
+-        reject(@"CONNECT_ERROR", startError.localizedDescription, startError);
+-        return;
+-      }
++        NSError *startError;
++        [manager.connection startVPNTunnelAndReturnError:&startError];
+ 
+-      resolve(nil);
++        if (startError) {
++          reject(@"CONNECT_ERROR", startError.localizedDescription, startError);
++          return;
++        }
++
++        resolve(nil);
++      }];
+     }];
+   }];
+ }
+ 
++RCT_EXPORT_METHOD(connect:(id)rawConfig
++                  resolver:(RCTPromiseResolveBlock)resolve
++                  rejecter:(RCTPromiseRejectBlock)reject)
++{
++  if (rawConfig == nil || rawConfig == (id)kCFNull) {
++    reject(@"CONNECT_ERROR", @"VPN connect: config is null", nil);
++    return;
++  }
++  NSDictionary *config = nil;
++  if ([rawConfig isKindOfClass:[NSDictionary class]]) {
++    config = (NSDictionary *)rawConfig;
++  } else if ([rawConfig isKindOfClass:[NSString class]]) {
++    NSData *d = [(NSString *)rawConfig dataUsingEncoding:NSUTF8StringEncoding];
++    if (d != nil) {
++      NSError *err = nil;
++      id parsed = [NSJSONSerialization JSONObjectWithData:d options:NSJSONReadingFragmentsAllowed error:&err];
++      if ([parsed isKindOfClass:[NSDictionary class]]) {
++        config = (NSDictionary *)parsed;
++      }
++    }
++  }
++  if (config == nil) {
++    reject(@"CONNECT_ERROR",
++           [NSString stringWithFormat:@"VPN connect: expected config object, got %@", NSStringFromClass([rawConfig class])],
++           nil);
++    return;
++  }
++  [self wireGuardConnectWithDictionary:config resolver:resolve rejecter:reject];
++}
++
++RCT_EXPORT_METHOD(connectFromJSON:(NSString *)jsonString
++                  resolver:(RCTPromiseResolveBlock)resolve
++                  rejecter:(RCTPromiseRejectBlock)reject)
++{
++  if (jsonString == nil || jsonString.length == 0) {
++    reject(@"CONNECT_ERROR", @"VPN connectFromJSON: empty string", nil);
++    return;
++  }
++  NSData *d = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
++  NSError *err = nil;
++  id parsed = [NSJSONSerialization JSONObjectWithData:d options:NSJSONReadingFragmentsAllowed error:&err];
++  if (![parsed isKindOfClass:[NSDictionary class]]) {
++    reject(@"CONNECT_ERROR",
++           [NSString stringWithFormat:@"VPN connectFromJSON: %@", err.localizedDescription ?: @"not a JSON object"],
++           nil);
++    return;
++  }
++  [self wireGuardConnectWithDictionary:(NSDictionary *)parsed resolver:resolve rejecter:reject];
++}
++
+ RCT_EXPORT_METHOD(disconnect:(RCTPromiseResolveBlock)resolve
+                   rejecter:(RCTPromiseRejectBlock)reject)
+ {
+@@ -199,7 +395,7 @@ RCT_EXPORT_METHOD(disconnect:(RCTPromiseResolveBlock)resolve
+       return;
+     }
+     
+-    NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++    NSString *providerBundleIdentifier = @"com.celilcecen.guardlanevpn.wireguardtunnel";
+     NETunnelProviderManager *manager = nil;
+     for (NETunnelProviderManager *m in managers) {
+       if (![m.protocolConfiguration isKindOfClass:[NETunnelProviderProtocol class]]) continue;
+@@ -229,7 +425,7 @@ RCT_EXPORT_METHOD(getStatus:(RCTPromiseResolveBlock)resolve
+       return;
+     }
+     
+-    NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++    NSString *providerBundleIdentifier = @"com.celilcecen.guardlanevpn.wireguardtunnel";
+     NETunnelProviderManager *manager = nil;
+     for (NETunnelProviderManager *m in managers) {
+       if (![m.protocolConfiguration isKindOfClass:[NETunnelProviderProtocol class]]) continue;
+diff --git a/node_modules/react-native-wireguard-vpn/plugin/withWireGuardVpn.js b/node_modules/react-native-wireguard-vpn/plugin/withWireGuardVpn.js
+index bddb8fa..1fc5083 100644
+--- a/node_modules/react-native-wireguard-vpn/plugin/withWireGuardVpn.js
++++ b/node_modules/react-native-wireguard-vpn/plugin/withWireGuardVpn.js
+@@ -23,13 +23,19 @@ function withWireGuardVpn(config) {
+       cfg.modResults.NSLocalNetworkUsageDescription ||
+       'This app requires access to network features for VPN functionality';
+ 
++    // NEPacketTunnelProvider runs in the extension; the main app must not declare
++    // invalid UIBackgroundModes. 'network' is not a valid value; 'network-authentication'
++    // requires CaptiveNetworkPlugin / HotspotHelper entitlements (App Store 90112 / 90514).
+     const existingModes = cfg.modResults.UIBackgroundModes;
+-    const modes = Array.isArray(existingModes) ? existingModes.slice() : [];
+-
+-    if (!modes.includes('network-authentication')) modes.push('network-authentication');
+-    if (!modes.includes('network')) modes.push('network');
+-
+-    cfg.modResults.UIBackgroundModes = modes;
++    if (Array.isArray(existingModes) && existingModes.length > 0) {
++      const invalid = new Set(['network', 'network-authentication']);
++      const cleaned = existingModes.filter((m) => !invalid.has(m));
++      if (cleaned.length > 0) {
++        cfg.modResults.UIBackgroundModes = cleaned;
++      } else {
++        delete cfg.modResults.UIBackgroundModes;
++      }
++    }
+     return cfg;
+   });
+ 

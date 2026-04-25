@@ -1,8 +1,7 @@
 /**
- * VPN tüneli — wireguard-native-bridge (Expo native modülü).
- * Expo Go’da modül yoktur; gerçek bağlantı için: npx expo prebuild && npx expo run:ios|android
+ * VPN tüneli — react-native-wireguard-vpn (+ wireguard-native-bridge yedek).
  */
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 let WG = null;
 let legacyWG = null;
@@ -18,52 +17,128 @@ try {
   legacyWG = null;
 }
 
-function parseWireGuardConfig(configString) {
-  const lines = String(configString || '')
-    .split(/\r?\n/)
-    .map((x) => x.trim())
-    .filter((x) => x && !x.startsWith('#'));
+function splitKeyValue(line) {
+  const eq = line.indexOf('=');
+  if (eq <= 0) return null;
+  const key = line
+    .slice(0, eq)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '');
+  const value = line.slice(eq + 1).trim();
+  if (!key) return null;
+  return { key, value };
+}
+
+function parseEndpointValue(endpoint) {
+  const s = String(endpoint || '').trim();
+  if (!s) throw new Error('WireGuard endpoint bos');
+
+  const v6 = s.match(/^\[(.+)\]:(\d{1,5})$/);
+  if (v6) {
+    const port = Number(v6[2]);
+    if (!v6[1] || !Number.isFinite(port) || port < 1 || port > 65535) {
+      throw new Error('WireGuard endpoint gecersiz');
+    }
+    return { host: v6[1].trim(), port };
+  }
+
+  const colon = s.lastIndexOf(':');
+  if (colon <= 0 || colon === s.length - 1) {
+    throw new Error('WireGuard endpoint gecersiz (host:port bekleniyor)');
+  }
+  const host = s.slice(0, colon).trim();
+  const port = Number(s.slice(colon + 1).trim());
+  if (!host || !Number.isFinite(port) || port < 1 || port > 65535) {
+    throw new Error('WireGuard endpoint gecersiz');
+  }
+  return { host, port };
+}
+
+/**
+ * Sunucudan gelen WireGuard metnini native modülün beklediği düz nesneye çevirir.
+ * RN köprüsü için undefined içermez; sayılar tam sayı port olarak gider (Android getInt).
+ */
+export function parseWireGuardConfig(configString) {
+  const text = String(configString || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  const lines = text
+    .split('\n')
+    .map((x) => (x.split('#')[0] ?? '').trim())
+    .filter(Boolean);
 
   let section = '';
   const iface = {};
   const peer = {};
+
   for (const line of lines) {
     if (line.startsWith('[') && line.endsWith(']')) {
-      section = line.slice(1, -1).toLowerCase();
+      section = line
+        .slice(1, -1)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '');
       continue;
     }
-    const idx = line.indexOf('=');
-    if (idx === -1) continue;
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-    if (section === 'interface') iface[key] = value;
-    if (section === 'peer') peer[key] = value;
+    const kv = splitKeyValue(line);
+    if (!kv) continue;
+    if (section === 'interface') iface[kv.key] = kv.value;
+    if (section === 'peer') peer[kv.key] = kv.value;
   }
+
   if (!iface.privatekey || !peer.publickey || !peer.endpoint) {
     throw new Error('WireGuard config eksik veya gecersiz');
   }
-  const [serverAddress, serverPortRaw] = peer.endpoint.split(':');
-  const serverPort = Number(serverPortRaw || 51820);
-  if (!serverAddress || Number.isNaN(serverPort)) {
-    throw new Error('WireGuard endpoint gecersiz');
+
+  const { host: serverAddress, port: serverPort } = parseEndpointValue(peer.endpoint);
+
+  let allowedIPs = String(peer.allowedips || '0.0.0.0/0, ::/0')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((x) => x.replace(/^::0\/0$/i, '::/0'));
+
+  if (!allowedIPs.length) allowedIPs = ['0.0.0.0/0'];
+
+  const dnsRaw = iface.dns ? String(iface.dns) : '1.1.1.1';
+  const dns = dnsRaw
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const address = String(iface.address || '10.64.0.1/32').trim();
+  const mtuRaw = Number(iface.mtu || 1280);
+  const mtu = Math.min(65535, Math.max(576, Math.trunc(Number.isFinite(mtuRaw) ? mtuRaw : 1280)));
+
+  const portInt = Math.trunc(Number(serverPort));
+  if (!Number.isFinite(portInt) || portInt < 1 || portInt > 65535) {
+    throw new Error('Gecersiz sunucu portu');
   }
-  return {
-    privateKey: iface.privatekey,
-    publicKey: peer.publickey,
-    presharedKey: peer.presharedkey || undefined,
-    serverAddress,
-    serverPort,
-    address: iface.address || '10.64.0.1/32',
-    allowedIPs: String(peer.allowedips || '0.0.0.0/0, ::/0')
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean),
-    dns: String(iface.dns || '1.1.1.1')
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean),
-    mtu: Number(iface.mtu || 1280),
+
+  const bundle = {
+    serverAddress: String(serverAddress).trim(),
+    serverPort: portInt,
+    endpoint: `${String(serverAddress).trim()}:${portInt}`,
+    privateKey: String(iface.privatekey).trim(),
+    publicKey: String(peer.publickey).trim(),
+    allowedIPs,
+    address,
+    dns: dns.length ? dns : ['1.1.1.1'],
+    mtu,
   };
+
+  if (peer.presharedkey) {
+    bundle.presharedKey = String(peer.presharedkey).trim();
+  }
+
+  if (!bundle.serverAddress || !bundle.privateKey || !bundle.publicKey) {
+    throw new Error('VPN sunucu adresi veya anahtarlar eksik');
+  }
+
+  return JSON.parse(JSON.stringify(bundle));
 }
 
 export async function prepare() {
@@ -86,8 +161,18 @@ export async function connect(configString) {
         await WG.initialize();
         initialized = true;
       }
-      const parsed = parseWireGuardConfig(configString);
-      await WG.connect(parsed);
+      const nativeConfig = parseWireGuardConfig(configString);
+      const mod = NativeModules.WireGuardVpnModule;
+      const payload = JSON.stringify(nativeConfig);
+      if (Platform.OS === 'ios' && mod && typeof mod.connectFromJSON === 'function') {
+        try {
+          await mod.connectFromJSON(payload);
+        } catch (iosErr) {
+          await WG.connect(nativeConfig);
+        }
+      } else {
+        await WG.connect(nativeConfig);
+      }
       return;
     }
     if (legacyWG && typeof legacyWG.startTunnel === 'function') {

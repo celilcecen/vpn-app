@@ -14,7 +14,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.celilcecen.guardlanevpn",
-      "buildNumber": "2",
+      "appleTeamId": "HFA597M8QF",
+      "buildNumber": "23",
       "infoPlist": {
         "NSNetworkExtensionUsageDescription": "VPN tüneli oluşturmak ve trafiğinizi korumak için ağ uzantısı kullanılır.",
         "NSLocalNetworkUsageDescription": "VPN bağlantısı için ağ erişimi gerekir",
@@ -37,7 +38,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["react-native-wireguard-vpn", "@bacons/apple-targets"],
+    "plugins": [
+      "react-native-wireguard-vpn",
+      "@bacons/apple-targets"
+    ],
     "extra": {
       "eas": {
         "projectId": "b0126b19-8548-4204-96b8-360500dad2b0"

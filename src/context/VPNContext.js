@@ -58,7 +58,11 @@ export function VPNProvider({ children }) {
   const loadServers = useCallback(async () => {
     try {
       const list = await api.getServers();
-      setServers(getServerList(list));
+      const normalized = (Array.isArray(list) ? list : []).map((s) => ({
+        ...s,
+        id: s && s.id != null && s.id !== '' ? String(s.id) : s.id,
+      }));
+      setServers(getServerList(normalized));
     } catch (_) {
       setServers(FALLBACK_SERVERS);
     }
@@ -148,6 +152,16 @@ export function VPNProvider({ children }) {
         setConnectionError('Seçilen sunucu bulunamadı. Sunucu listesini yenileyip tekrar deneyin.');
       } else if (err.status === 401) {
         setConnectionError('Oturum süresi dolmuş olabilir. Çıkış yapıp tekrar giriş yapın.');
+      } else if (
+        /Missing required config:/i.test(msg) ||
+        /VPN config missing:/i.test(msg) ||
+        /Missing server address/i.test(msg) ||
+        /Server address is required/i.test(msg) ||
+        /VPN sunucu adresi veya anahtarlar eksik/i.test(msg)
+      ) {
+        setConnectionError(
+          'VPN yapılandırması eksik veya geçersiz. Sunucu listesini yenileyip farklı konum deneyin; sorun sürerse oturumu kapatıp tekrar giriş yapın.'
+        );
       } else {
         setConnectionError(msg || 'Bağlantı başarısız.');
       }

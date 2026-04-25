@@ -10,11 +10,20 @@ function mapAuthError(err, mode) {
   const fallback = mode === 'register' ? 'Kayıt başarısız.' : 'Giriş başarısız.';
   const message = String(err?.message || '');
 
-  if (status === 400) return err?.message || 'Email veya şifre formatı geçersiz.';
+  if (status === 400) {
+    const m = String(err?.message || '');
+    if (mode === 'register' && /zaten kayıtlı|already registered/i.test(m)) {
+      return 'Bu email zaten kayıtlı.';
+    }
+    return err?.message || 'Email veya şifre formatı geçersiz.';
+  }
   if (status === 401) return 'Email veya şifre hatalı.';
   if (status === 409) return 'Bu email zaten kayıtlı.';
   if (status >= 500) return 'Sunucu hatası. Lütfen tekrar deneyin.';
-  if (/network request failed|failed to fetch|load failed/i.test(message)) {
+  if (
+    status === 0 ||
+    /network request failed|failed to fetch|load failed|networkerror|aborted/i.test(message)
+  ) {
     return `Sunucuya baglanilamadi. API: ${getBaseUrl()}`;
   }
   return err?.message || fallback;

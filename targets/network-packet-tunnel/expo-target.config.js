@@ -4,8 +4,8 @@ module.exports = (config) => ({
   name: 'WireGuardTunnel',
   displayName: 'WireGuard Tunnel',
   deploymentTarget: '15.1',
-  // The react-native-wireguard-vpn native code expects this by default.
-  bundleIdentifier: 'com.wireguardvpn.tunnel',
+  // Must be unique in Apple Developer account.
+  bundleIdentifier: `${config.ios.bundleIdentifier}.wireguardtunnel`,
   frameworks: ['NetworkExtension'],
   entitlements: {
     'com.apple.developer.networking.networkextension': ['packet-tunnel-provider'],

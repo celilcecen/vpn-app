@@ -41,7 +41,15 @@ async function request(path, options = {}) {
     ...options.headers,
   };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const res = await fetch(url, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (e) {
+    const err = new Error(e?.message || 'network request failed');
+    err.status = 0;
+    err.cause = e;
+    throw err;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || 'İstek başarısız');
@@ -79,10 +87,11 @@ export const api = {
   },
   async getConfig(serverId, options = {}) {
     const deviceId = await getOrCreateDeviceId();
+    const sid = serverId == null || serverId === '' ? serverId : String(serverId);
     return request('/vpn/config', {
       method: 'POST',
       body: JSON.stringify({
-        serverId,
+        serverId: sid,
         deviceId,
         platform: Platform.OS,
         routeMode: options.routeMode || 'full',
@@ -119,19 +128,24 @@ export const api = {
 export async function initApiConfig() {
   try {
     const saved = await AsyncStorage.getItem(BASE_URL_KEY);
-    if (saved) {
-      const normalized = validateBaseUrl(saved);
-      const parsed = new URL(normalized);
-      const isLegacyIp = parsed.hostname === '35.163.17.141';
-      const isLegacyApiDomain = parsed.hostname === 'api.guardline.online' && parsed.protocol !== 'https:';
-      const isLegacyHttp = LEGACY_HOSTS.has(parsed.hostname) && parsed.protocol !== 'https:';
-      const mustUseProdApi = !__DEV__ && parsed.hostname !== 'api.guardline.online';
-      if (isLegacyIp || isLegacyApiDomain || isLegacyHttp || mustUseProdApi) {
-        BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
+    if (!saved) {
+      BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
+      if (!__DEV__) {
         await AsyncStorage.setItem(BASE_URL_KEY, BASE_URL);
-      } else {
-        BASE_URL = normalized;
       }
+      return;
+    }
+    const normalized = validateBaseUrl(saved);
+    const parsed = new URL(normalized);
+    const isLegacyIp = parsed.hostname === '35.163.17.141';
+    const isLegacyApiDomain = parsed.hostname === 'api.guardline.online' && parsed.protocol !== 'https:';
+    const isLegacyHttp = LEGACY_HOSTS.has(parsed.hostname) && parsed.protocol !== 'https:';
+    const mustUseProdApi = !__DEV__ && parsed.hostname !== 'api.guardline.online';
+    if (isLegacyIp || isLegacyApiDomain || isLegacyHttp || mustUseProdApi) {
+      BASE_URL = DEFAULT_BASE_URL.replace(/\/$/, '');
+      await AsyncStorage.setItem(BASE_URL_KEY, BASE_URL);
+    } else {
+      BASE_URL = normalized;
     }
   } catch (_) {}
 }
