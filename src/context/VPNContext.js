@@ -101,13 +101,38 @@ export function VPNProvider({ children }) {
       if (!api || typeof api.getConfig !== 'function') {
         throw new Error('API istemcisi hazir degil.');
       }
+
+      try {
+        const runtime = await api.getRuntimeStatus();
+        if (!runtime?.wgRuntimeEnabled) {
+          throw new Error(
+            'Sunucu yapılandırması eksik: WG_RUNTIME_ENABLED aktif değil. Yöneticiye haber verin.'
+          );
+        }
+        if (!runtime.interfaceUp) {
+          throw new Error(
+            `Sunucudaki ${runtime.wgInterface || 'wg0'} arayüzü kapalı. ${runtime.reason || ''}`.trim()
+          );
+        }
+      } catch (preErr) {
+        if (/WG_RUNTIME|kapal/i.test(String(preErr?.message || ''))) {
+          throw preErr;
+        }
+      }
+
       const data = await api.getConfig(serverId, {
         routeMode: 'full',
         dnsLeakProtection,
       });
       const config = data?.config;
+      const clientPublicKey = data?.clientPublicKey || null;
       if (typeof config !== 'string' || !config.trim()) {
         throw new Error('Sunucudan geçerli WireGuard yapılandırması alınamadı.');
+      }
+      if (data?.wgRuntime && data.wgRuntime.enabled && data.wgRuntime.peerSynced === false) {
+        throw new Error(
+          `Peer sunucu kerneline yazılmadı: ${data.wgRuntime.reason || 'bilinmeyen sebep'}.`
+        );
       }
       if (typeof tunnel.prepare !== 'function' || typeof tunnel.connect !== 'function') {
         throw new Error('VPN modulu hazir degil.');
@@ -121,13 +146,50 @@ export function VPNProvider({ children }) {
         throw new Error('VPN tüneli zamanında aktif olmadı. Lütfen tekrar deneyin.');
       }
 
+      let handshakeOK = false;
+      const handshakeDeadline = Date.now() + 15000;
+      while (Date.now() < handshakeDeadline) {
+        if (clientPublicKey && typeof api.getPeerStatus === 'function') {
+          try {
+            const ps = await api.getPeerStatus(clientPublicKey);
+            if (ps?.synced && ps?.handshakeFresh) {
+              handshakeOK = true;
+              break;
+            }
+          } catch (_) {}
+        }
+        if (typeof api.pingHealth === 'function') {
+          const pong = await api.pingHealth(3000);
+          if (pong?.ok) {
+            handshakeOK = true;
+            break;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+
+      if (!handshakeOK) {
+        try { await tunnel.disconnect(); } catch (_) {}
+        throw new Error(
+          'VPN tüneli açıldı ama sunucu el sıkışması yapmadı (peer sunucuda eksik veya UDP/51820 bloke). Aboneliğin aktif olduğundan emin olup tekrar deneyin.'
+        );
+      }
+
       setConnected(true);
       setTunnelStatus('UP');
-      try {
-        if (typeof api.getPublicIpInfo !== 'function') return;
-        const ip = await api.getPublicIpInfo();
-        setExitInfo(ip);
-      } catch (_) {}
+      (async () => {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          try {
+            if (typeof api.getPublicIpInfo !== 'function') return;
+            const ip = await api.getPublicIpInfo();
+            if (ip && ip.ip) {
+              setExitInfo(ip);
+              return;
+            }
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      })();
     } catch (err) {
       const msg = String(err?.message || err || '');
       setConnected(false);

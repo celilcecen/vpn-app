@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,11 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVPN } from '../context/VPNContext';
 import { useAuth } from '../context/AuthContext';
 import { sentinel } from '../theme/sentinel';
+import { api, getBaseUrl } from '../api/client';
 
 const switchTrack = { false: '#3f3f46', true: sentinel.neonDim };
 const switchThumbOn = sentinel.neon;
@@ -29,6 +31,27 @@ export default function SettingsScreen({ navigation }) {
     setRouteMode,
   } = useVPN();
   const { email, logout } = useAuth();
+  const [diag, setDiag] = useState(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+
+  const runDiagnostics = async () => {
+    setDiagLoading(true);
+    setDiag(null);
+    try {
+      const runtime = await api.getRuntimeStatus();
+      const ping = await api.pingHealth(5000);
+      setDiag({
+        ok: !!(runtime?.wgRuntimeEnabled && runtime?.interfaceUp && ping?.ok),
+        runtime,
+        ping,
+        baseUrl: getBaseUrl(),
+      });
+    } catch (e) {
+      setDiag({ ok: false, error: e?.message || String(e), baseUrl: getBaseUrl() });
+    } finally {
+      setDiagLoading(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -193,6 +216,56 @@ export default function SettingsScreen({ navigation }) {
               expose your real IP before the tunnel restores.
             </Text>
           </View>
+        </View>
+
+        <Text style={styles.accountSectionLabel}>DIAGNOSTICS</Text>
+        <View style={styles.card}>
+          <Text style={styles.toggleTitle}>VPN Sunucu Sağlık Kontrolü</Text>
+          <Text style={styles.toggleDesc}>
+            Backend WireGuard runtime aktif mi, wg arayüzü ayakta mı, API erişilebilir mi — hızlıca kontrol et.
+          </Text>
+          <TouchableOpacity
+            style={styles.auditBtn}
+            activeOpacity={0.85}
+            onPress={runDiagnostics}
+            disabled={diagLoading}
+          >
+            {diagLoading ? (
+              <ActivityIndicator color={sentinel.neon} />
+            ) : (
+              <Text style={styles.auditBtnText}>RUN DIAGNOSTICS</Text>
+            )}
+          </TouchableOpacity>
+          {diag ? (
+            <View style={{ marginTop: 12 }}>
+              <Text style={[styles.toggleDesc, { color: diag.ok ? sentinel.neon : '#f87171' }]}>
+                {diag.ok ? 'OK — VPN backend hazır' : 'PROBLEM TESPİT EDİLDİ'}
+              </Text>
+              <Text style={styles.toggleDesc}>API: {diag.baseUrl}</Text>
+              {diag.runtime ? (
+                <>
+                  <Text style={styles.toggleDesc}>
+                    WG_RUNTIME_ENABLED: {String(!!diag.runtime.wgRuntimeEnabled)}
+                  </Text>
+                  <Text style={styles.toggleDesc}>
+                    Interface ({diag.runtime.wgInterface || 'wg0'}) up: {String(!!diag.runtime.interfaceUp)}
+                  </Text>
+                  <Text style={styles.toggleDesc}>
+                    Active peers: {diag.runtime.activePeers ?? '?'}
+                  </Text>
+                  {diag.runtime.reason ? (
+                    <Text style={styles.toggleDesc}>Reason: {diag.runtime.reason}</Text>
+                  ) : null}
+                </>
+              ) : null}
+              {diag.ping ? (
+                <Text style={styles.toggleDesc}>
+                  Health: {diag.ping.ok ? 'OK' : `FAIL ${diag.ping.error || ''}`}
+                </Text>
+              ) : null}
+              {diag.error ? <Text style={styles.toggleDesc}>Error: {diag.error}</Text> : null}
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.accountSectionLabel}>ACCOUNT</Text>

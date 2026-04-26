@@ -102,6 +102,29 @@ export const api = {
   async getPlans() {
     return request('/billing/plans');
   },
+  async getRuntimeStatus() {
+    return request('/setup/runtime');
+  },
+  async getPeerStatus(publicKey) {
+    return request('/vpn/peer-status', {
+      method: 'POST',
+      body: JSON.stringify({ publicKey }),
+    });
+  },
+  async pingHealth(timeoutMs = 6000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const url = `${BASE_URL}/health?ts=${Date.now()}`;
+      const res = await fetch(url, { signal: ctrl.signal, headers: { 'Cache-Control': 'no-cache' } });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok && !!data.ok };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) };
+    } finally {
+      clearTimeout(t);
+    }
+  },
   async getMySubscription() {
     return request('/billing/me');
   },

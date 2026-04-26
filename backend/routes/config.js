@@ -1,7 +1,11 @@
 const express = require('express');
 const { query } = require('../lib/db');
 const { generateWireGuardKeyPair, buildConfig } = require('../lib/wireguard');
-const { applyPeer } = require('../lib/wireguardRuntime');
+const {
+  applyPeer,
+  verifyPeer,
+  WG_RUNTIME_ENABLED,
+} = require('../lib/wireguardRuntime');
 const { authMiddleware } = require('./auth');
 const router = express.Router();
 
@@ -159,7 +163,42 @@ router.post('/config', authMiddleware, async (req, res) => {
       clientPublicKey = keys.publicKey;
     }
 
-    await applyPeer({ publicKey: clientPublicKey, assignedIp });
+    let applyError = null;
+    try {
+      await applyPeer({ publicKey: clientPublicKey, assignedIp });
+    } catch (e) {
+      applyError = e.message || String(e);
+    }
+
+    let peerSynced = false;
+    let runtimeReason = null;
+    if (WG_RUNTIME_ENABLED) {
+      try {
+        const v = await verifyPeer(clientPublicKey);
+        peerSynced = !!v.synced;
+        if (!peerSynced && v.state) {
+          runtimeReason =
+            v.state.reason ||
+            (v.state.interfaceUp
+              ? `Peer not present in ${v.state.iface ? 'wg' : 'kernel'} after applyPeer`
+              : `Interface ${process.env.WG_INTERFACE || 'wg0'} is down`);
+        }
+        if (applyError) runtimeReason = `applyPeer failed: ${applyError}`;
+      } catch (e) {
+        runtimeReason = `verifyPeer failed: ${e.message || e}`;
+      }
+    } else {
+      runtimeReason =
+        'WG_RUNTIME_ENABLED is not "true" on backend; peers are NOT installed in kernel wg0. Real handshakes will fail.';
+    }
+
+    if (WG_RUNTIME_ENABLED && !peerSynced) {
+      return res.status(503).json({
+        error: 'WG_PEER_NOT_SYNCED',
+        detail: runtimeReason,
+        wgRuntime: { enabled: true, peerSynced: false, reason: runtimeReason },
+      });
+    }
 
     const allowedIPs = routeMode === 'split' ? '10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16' : '0.0.0.0/0, ::/0';
 
@@ -172,7 +211,16 @@ router.post('/config', authMiddleware, async (req, res) => {
       allowedIPs,
     });
 
-    return res.json({ config: configString });
+    return res.json({
+      config: configString,
+      clientPublicKey,
+      assignedIp,
+      wgRuntime: {
+        enabled: !!WG_RUNTIME_ENABLED,
+        peerSynced,
+        reason: runtimeReason,
+      },
+    });
   } catch (e) {
     if (e.message === 'DEVICE_LIMIT_EXCEEDED') {
       return res.status(429).json({ error: `Cihaz limiti aşıldı (max ${DEVICE_LIMIT})` });
@@ -181,6 +229,36 @@ router.post('/config', authMiddleware, async (req, res) => {
       return res.status(503).json({ error: 'IP havuzu dolu, node kapasitesi artırılmalı' });
     }
     res.status(500).json({ error: 'Config alınamadı' });
+  }
+});
+
+router.post('/peer-status', authMiddleware, async (req, res) => {
+  try {
+    const { publicKey } = req.body || {};
+    if (!publicKey) {
+      return res.status(400).json({ error: 'publicKey gerekli' });
+    }
+    const ownership = await query(
+      "SELECT id FROM vpn_peers WHERE user_id = $1 AND client_public_key = $2 AND status = 'active' LIMIT 1",
+      [req.user.userId, publicKey]
+    );
+    if (!ownership.rows[0]) {
+      return res.status(404).json({ error: 'Peer bulunamadı' });
+    }
+    const v = await verifyPeer(publicKey);
+    const ageSec = v.latestHandshake ? Math.floor(Date.now() / 1000) - v.latestHandshake : null;
+    return res.json({
+      enabled: !!WG_RUNTIME_ENABLED,
+      synced: !!v.synced,
+      handshakeAt: v.latestHandshake || 0,
+      handshakeAgeSec: ageSec,
+      handshakeFresh: ageSec != null && ageSec >= 0 && ageSec < 180,
+      rxBytes: v.rxBytes || 0,
+      txBytes: v.txBytes || 0,
+      reason: v.state && v.state.reason ? v.state.reason : null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Peer durumu alınamadı', detail: e.message });
   }
 });
 
