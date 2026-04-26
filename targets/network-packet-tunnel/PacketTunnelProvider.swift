@@ -1,93 +1,134 @@
+import Foundation
 import NetworkExtension
+import WireGuardKit
+import os
 
-/// Packet tunnel entry point. Must apply network settings; a no-op startTunnel breaks iOS VPN.
-class PacketTunnelProvider: NEPacketTunnelProvider {
-  override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
-    guard let proto = protocolConfiguration as? NETunnelProviderProtocol else {
-      completionHandler(
-        NSError(
-          domain: "GuardLine",
-          code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "Invalid VPN configuration"]
-        )
-      )
-      return
-    }
+final class PacketTunnelProvider: NEPacketTunnelProvider {
+  private let logger = Logger(subsystem: "com.celilcecen.guardlanevpn.wireguardtunnel", category: "PacketTunnel")
 
-    var remote = proto.serverAddress ?? ""
-    if remote.isEmpty, let cfg = proto.providerConfiguration as? [String: Any] {
-      if let s = cfg["serverAddress"] as? String { remote = s }
+  private lazy var adapter: WireGuardAdapter = {
+    WireGuardAdapter(with: self) { [weak self] logLevel, message in
+      self?.logger.log("WG[\(logLevel.rawValue)]: \(message, privacy: .public)")
     }
-    if remote.isEmpty {
-      completionHandler(
-        NSError(
-          domain: "GuardLine",
-          code: 2,
-          userInfo: [NSLocalizedDescriptionKey: "Missing server address"]
-        )
-      )
-      return
-    }
+  }()
 
-    let tunnelRemote: String
-    if remote.hasPrefix("[") {
-      if let endIdx = remote.firstIndex(of: "]") {
-        tunnelRemote = String(remote[remote.index(after: remote.startIndex)..<endIdx])
-      } else {
-        tunnelRemote = remote
+  override func startTunnel(
+    options: [String: NSObject]?,
+    completionHandler: @escaping (Error?) -> Void
+  ) {
+    do {
+      let tunnelConfiguration = try makeTunnelConfiguration(from: protocolConfiguration)
+      adapter.start(tunnelConfiguration: tunnelConfiguration) { adapterError in
+        if let adapterError = adapterError {
+          completionHandler(adapterError)
+        } else {
+          completionHandler(nil)
+        }
       }
-    } else if let colon = remote.lastIndex(of: ":"),
-              !remote[..<colon].contains(":") {
-      tunnelRemote = String(remote[..<colon])
-    } else {
-      tunnelRemote = remote
+    } catch {
+      completionHandler(error)
     }
-
-    let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: tunnelRemote)
-
-    var tunnelIp = "10.64.0.2"
-    if let cfg = proto.providerConfiguration as? [String: Any],
-       let addr = cfg["address"] as? String {
-      let host = addr.split(separator: "/").first.map(String.init) ?? addr
-      if !host.isEmpty { tunnelIp = host }
-    }
-
-    let ipv4 = NEIPv4Settings(addresses: [tunnelIp], subnetMasks: ["255.255.255.255"])
-    ipv4.includedRoutes = [NEIPv4Route.default()]
-    settings.ipv4Settings = ipv4
-
-    if let cfg = proto.providerConfiguration as? [String: Any],
-       let dnsAny = cfg["dns"] {
-      var servers: [String] = []
-      if let arr = dnsAny as? [String] {
-        servers = arr
-      } else if let arr = dnsAny as? [Any] {
-        servers = arr.compactMap { $0 as? String }
-      }
-      if !servers.isEmpty {
-        settings.dnsSettings = NEDNSSettings(servers: servers)
-      }
-    }
-    if settings.dnsSettings == nil {
-      settings.dnsSettings = NEDNSSettings(servers: ["1.1.1.1"])
-    }
-
-    if let cfg = proto.providerConfiguration as? [String: Any],
-       let mtuVal = cfg["mtu"] {
-      if let n = mtuVal as? NSNumber {
-        settings.mtu = n
-      } else if let i = mtuVal as? Int {
-        settings.mtu = NSNumber(value: i)
-      }
-    }
-    if settings.mtu == nil {
-      settings.mtu = NSNumber(value: 1280)
-    }
-
-    setTunnelNetworkSettings(settings, completionHandler: completionHandler)
   }
 
-  override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
-    completionHandler()
+  override func stopTunnel(
+    with reason: NEProviderStopReason,
+    completionHandler: @escaping () -> Void
+  ) {
+    adapter.stop { _ in
+      completionHandler()
+    }
+  }
+
+  // MARK: - Tunnel configuration builder
+
+  private func makeTunnelConfiguration(from proto: NEVPNProtocol?) throws -> TunnelConfiguration {
+    guard let proto = proto as? NETunnelProviderProtocol else {
+      throw PTPError.invalidProtocol
+    }
+
+    guard let cfg = proto.providerConfiguration else {
+      throw PTPError.missingProviderConfiguration
+    }
+
+    let privateKeyBase64 = try requiredString("privateKey", in: cfg)
+    let address = try requiredString("address", in: cfg)
+    let publicKeyBase64 = try requiredString("publicKey", in: cfg)
+    let endpointString = try requiredString("endpoint", in: cfg)
+    let allowedIPs = stringArray("allowedIPs", in: cfg) ?? ["0.0.0.0/0", "::/0"]
+    let dnsStrings = stringArray("dns", in: cfg) ?? ["1.1.1.1", "8.8.8.8"]
+    let mtu = number("mtu", in: cfg).map { UInt16($0) }
+    let keepAlive = number("persistentKeepalive", in: cfg).map { UInt16($0) } ?? 25
+
+    guard let privateKey = PrivateKey(base64Key: privateKeyBase64) else {
+      throw PTPError.invalidField("privateKey")
+    }
+    guard let serverPublicKey = PublicKey(base64Key: publicKeyBase64) else {
+      throw PTPError.invalidField("publicKey")
+    }
+    guard let endpoint = Endpoint(from: endpointString) else {
+      throw PTPError.invalidField("endpoint")
+    }
+
+    var interface = InterfaceConfiguration(privateKey: privateKey)
+    guard let addressRange = IPAddressRange(from: address) else {
+      throw PTPError.invalidField("address")
+    }
+    interface.addresses = [addressRange]
+    interface.dns = dnsStrings.compactMap { DNSServer(from: $0) }
+    interface.mtu = mtu
+
+    var peer = PeerConfiguration(publicKey: serverPublicKey)
+    peer.endpoint = endpoint
+    peer.allowedIPs = allowedIPs.compactMap { IPAddressRange(from: $0) }
+    peer.persistentKeepAlive = keepAlive
+
+    return TunnelConfiguration(
+      name: proto.serverAddress ?? "GuardLine",
+      interface: interface,
+      peers: [peer]
+    )
+  }
+
+  // MARK: - Helpers
+
+  private func requiredString(_ key: String, in dict: [String: Any]) throws -> String {
+    guard let v = dict[key] as? String,
+          !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw PTPError.invalidField(key)
+    }
+    return v
+  }
+
+  private func stringArray(_ key: String, in dict: [String: Any]) -> [String]? {
+    if let a = dict[key] as? [String] { return a }
+    if let a = dict[key] as? [Any] { return a.compactMap { $0 as? String } }
+    if let s = dict[key] as? String {
+      return s
+        .split(whereSeparator: { $0 == "," || $0 == " " })
+        .map { String($0) }
+        .filter { !$0.isEmpty }
+    }
+    return nil
+  }
+
+  private func number(_ key: String, in dict: [String: Any]) -> Int? {
+    if let n = dict[key] as? Int { return n }
+    if let n = dict[key] as? NSNumber { return n.intValue }
+    if let s = dict[key] as? String, let i = Int(s) { return i }
+    return nil
+  }
+}
+
+private enum PTPError: LocalizedError {
+  case invalidProtocol
+  case missingProviderConfiguration
+  case invalidField(String)
+
+  var errorDescription: String? {
+    switch self {
+    case .invalidProtocol: return "Invalid NETunnelProviderProtocol"
+    case .missingProviderConfiguration: return "Missing providerConfiguration"
+    case .invalidField(let key): return "Invalid or missing field: \(key)"
+    }
   }
 }
