@@ -6,19 +6,16 @@ import * as tunnel from '../vpn/tunnel';
 const VPNContext = createContext(null);
 
 const FALLBACK_SERVERS = [
-  { id: 'auto', country: 'Otomatik', code: '🌐', ping: 12 },
-  { id: 'tr', country: 'Türkiye', code: '🇹🇷', ping: 8 },
-  { id: 'de', country: 'Almanya', code: '🇩🇪', ping: 18 },
-  { id: 'nl', country: 'Hollanda', code: '🇳🇱', ping: 22 },
   { id: 'us', country: 'ABD', code: '🇺🇸', ping: 95 },
 ];
 
 const DEFAULT_SERVER = FALLBACK_SERVERS[0];
 
 function getServerList(servers) {
-  const list = servers && servers.length ? servers : FALLBACK_SERVERS;
-  const auto = list.find((s) => s.id === 'auto') || { id: 'auto', country: 'Otomatik', code: '🌐', ping: 12 };
-  return [auto, ...list.filter((s) => s.id !== 'auto')];
+  const list = (servers && servers.length ? servers : FALLBACK_SERVERS).filter(
+    (s) => s && s.id && String(s.id).toLowerCase() !== 'auto'
+  );
+  return list.length ? list : FALLBACK_SERVERS;
 }
 
 function isTurkeyServer(server) {
@@ -29,15 +26,13 @@ function isTurkeyServer(server) {
 }
 
 function pickBestServer(list, mode) {
-  const real = (list || []).filter((s) => s.id !== 'auto');
-  if (!real.length) return 'tr';
-  if (mode === 'us_only') {
-    const us = real.find((s) => String(s.id).toLowerCase() === 'us');
-    return us?.id || real[0].id;
-  }
+  const real = (list || []).filter((s) => s && s.id && String(s.id).toLowerCase() !== 'auto');
+  if (!real.length) return 'us';
+  const us = real.find((s) => String(s.id).toLowerCase() === 'us');
+  if (us) return us.id;
   if (mode === 'non_tr') {
     const nonTr = real.find((s) => !isTurkeyServer(s));
-    return nonTr?.id || real[0].id;
+    if (nonTr) return nonTr.id;
   }
   return real[0].id;
 }
@@ -51,7 +46,7 @@ export function VPNProvider({ children }) {
   const [connectionError, setConnectionError] = useState(null);
   const [killSwitch, setKillSwitch] = useState(true);
   const [dnsLeakProtection, setDnsLeakProtection] = useState(true);
-  const [routeMode, setRouteMode] = useState('non_tr'); // non_tr | us_only | manual
+  const [routeMode, setRouteMode] = useState('us_only'); // us_only | manual
   const [tunnelStatus, setTunnelStatus] = useState('DOWN');
   const [exitInfo, setExitInfo] = useState({ ip: null, country: null, city: null, countryCode: null });
 
@@ -62,7 +57,13 @@ export function VPNProvider({ children }) {
         ...s,
         id: s && s.id != null && s.id !== '' ? String(s.id) : s.id,
       }));
-      setServers(getServerList(normalized));
+      const finalList = getServerList(normalized);
+      setServers(finalList);
+      setSelectedServer((prev) => {
+        const us = finalList.find((s) => String(s.id).toLowerCase() === 'us');
+        if (us) return us;
+        return finalList[0] || prev;
+      });
     } catch (_) {
       setServers(FALLBACK_SERVERS);
     }

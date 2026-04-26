@@ -1,34 +1,10 @@
 [
   {
-    "id": "tr",
-    "country": "Türkiye",
-    "code": "TR",
-    "ping": 8,
-    "endpoint": "35.163.17.141:51820",
-    "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
-  },
-  {
-    "id": "de",
-    "country": "Almanya",
-    "code": "DE",
-    "ping": 18,
-    "endpoint": "35.163.17.141:51820",
-    "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
-  },
-  {
-    "id": "nl",
-    "country": "Hollanda",
-    "code": "NL",
-    "ping": 22,
-    "endpoint": "35.163.17.141:51820",
-    "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
-  },
-  {
     "id": "us",
-    "country": "ABD",
+    "country": "ABD (Oregon)",
     "code": "US",
-    "ping": 95,
+    "ping": 85,
     "endpoint": "35.163.17.141:51820",
-    "serverPublicKey": "CWHxXpqyxaxp0rdQspn7CikBftV72bz7MgM9PTDvoy8="
+    "serverPublicKey": "zmM8xGicGgjcbiTq5ksGKtlx9uWDEgtExaH0EI8YUXY="
   }
 ]

@@ -31,6 +31,7 @@ async function seedFromJsonIfEmpty() {
   if (!fs.existsSync(serversPath)) return;
 
   const servers = JSON.parse(fs.readFileSync(serversPath, 'utf8'));
+  const ids = servers.map((s) => s.id);
   for (const server of servers) {
     await query(
       `INSERT INTO vpn_nodes (id, country, code, endpoint, server_public_key, ping, status, capacity)
@@ -43,6 +44,16 @@ async function seedFromJsonIfEmpty() {
            ping = EXCLUDED.ping,
            status = 'active'`,
       [server.id, server.country, server.code, server.endpoint, server.serverPublicKey, server.ping || 0]
+    );
+  }
+  if (ids.length) {
+    await query(
+      `DELETE FROM vpn_peers WHERE node_id NOT IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`,
+      ids
+    );
+    await query(
+      `DELETE FROM vpn_nodes WHERE id NOT IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`,
+      ids
     );
   }
 }
