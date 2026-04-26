@@ -10,7 +10,7 @@
       <string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
     </dict>
     <key>CFBundleVersion</key>
-    <string>25</string>
+    <string>26</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0.0</string>
   </dict>

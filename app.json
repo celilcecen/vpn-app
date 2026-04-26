@@ -15,7 +15,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.celilcecen.guardlanevpn",
       "appleTeamId": "HFA597M8QF",
-      "buildNumber": "25",
+      "buildNumber": "26",
       "infoPlist": {
         "NSNetworkExtensionUsageDescription": "VPN tüneli oluşturmak ve trafiğinizi korumak için ağ uzantısı kullanılır.",
         "NSLocalNetworkUsageDescription": "VPN bağlantısı için ağ erişimi gerekir",
