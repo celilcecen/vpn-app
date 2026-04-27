@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   Switch,
+  AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVPN } from '../context/VPNContext';
@@ -40,6 +41,8 @@ export default function HomeScreen({ navigation }) {
     selectedServer,
     tunnelStatus,
     exitInfo,
+    connectedAt,
+    syncFromNative,
     connectionError,
     clearConnectionError,
     demoMode,
@@ -62,14 +65,27 @@ export default function HomeScreen({ navigation }) {
   }, [enterAnim]);
 
   useEffect(() => {
-    if (!connected) {
+    if (!connected || !connectedAt) {
       setSessionSec(0);
       setLiveMbps({ down: 0, up: 0 });
       return;
     }
-    const id = setInterval(() => setSessionSec((x) => x + 1), 1000);
+    const compute = () => {
+      const diff = Math.max(0, Math.floor((Date.now() - connectedAt) / 1000));
+      setSessionSec(diff);
+    };
+    compute();
+    const id = setInterval(compute, 1000);
     return () => clearInterval(id);
-  }, [connected]);
+  }, [connected, connectedAt]);
+
+  useEffect(() => {
+    if (typeof syncFromNative !== 'function') return undefined;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncFromNative();
+    });
+    return () => sub.remove();
+  }, [syncFromNative]);
 
   useEffect(() => {
     if (!connected) return;

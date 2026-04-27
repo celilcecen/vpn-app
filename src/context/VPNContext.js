@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { Platform } from 'react-native';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
 import * as tunnel from '../vpn/tunnel';
+
+const CONNECTED_AT_KEY = 'guardline.connectedAt';
 
 const VPNContext = createContext(null);
 
@@ -49,6 +52,68 @@ export function VPNProvider({ children }) {
   const [routeMode, setRouteMode] = useState('us_only'); // us_only | manual
   const [tunnelStatus, setTunnelStatus] = useState('DOWN');
   const [exitInfo, setExitInfo] = useState({ ip: null, country: null, city: null, countryCode: null });
+  const [connectedAt, setConnectedAt] = useState(null);
+  const lastSyncRef = useRef(0);
+
+  const persistConnectedAt = useCallback(async (ts) => {
+    try {
+      if (ts == null) {
+        await AsyncStorage.removeItem(CONNECTED_AT_KEY);
+      } else {
+        await AsyncStorage.setItem(CONNECTED_AT_KEY, String(ts));
+      }
+    } catch (_) {}
+  }, []);
+
+  const applyConnectedState = useCallback(
+    async (isUp, opts = {}) => {
+      if (isUp) {
+        setConnected(true);
+        setTunnelStatus('UP');
+        let ts = opts.connectedAt;
+        if (ts == null) {
+          try {
+            const stored = await AsyncStorage.getItem(CONNECTED_AT_KEY);
+            const parsed = stored ? Number(stored) : NaN;
+            ts = Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
+          } catch (_) {
+            ts = Date.now();
+          }
+        }
+        setConnectedAt((prev) => {
+          if (prev && Math.abs(prev - ts) < 5000) return prev;
+          return ts;
+        });
+        if (opts.persist !== false) {
+          persistConnectedAt(ts);
+        }
+      } else {
+        setConnected(false);
+        setTunnelStatus('DOWN');
+        setConnectedAt(null);
+        setExitInfo({ ip: null, country: null, city: null, countryCode: null });
+        persistConnectedAt(null);
+      }
+    },
+    [persistConnectedAt]
+  );
+
+  const syncFromNative = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastSyncRef.current < 750) return;
+    lastSyncRef.current = now;
+    try {
+      if (typeof tunnel.getStatus !== 'function') return;
+      const status = await tunnel.getStatus();
+      const isUp = status === 'UP' || status === 'CONNECTED' || status === 'ACTIVE';
+      const isDown = status === 'DOWN' || status === 'INACTIVE' || status === 'DISCONNECTED';
+      if (isUp) {
+        await applyConnectedState(true);
+      } else if (isDown) {
+        await applyConnectedState(false);
+      }
+    } catch (_) {}
+  }, [applyConnectedState]);
 
   const loadServers = useCallback(async () => {
     try {
@@ -73,6 +138,37 @@ export function VPNProvider({ children }) {
     loadServers();
   }, [loadServers]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = typeof tunnel.getStatus === 'function' ? await tunnel.getStatus() : 'UNKNOWN';
+        if (cancelled) return;
+        const isUp = status === 'UP' || status === 'CONNECTED' || status === 'ACTIVE';
+        if (isUp) {
+          await applyConnectedState(true);
+        }
+      } catch (_) {}
+    })();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        syncFromNative();
+      }
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [applyConnectedState, syncFromNative]);
+
+  useEffect(() => {
+    if (!connected) return;
+    const id = setInterval(() => {
+      syncFromNative();
+    }, 8000);
+    return () => clearInterval(id);
+  }, [connected, syncFromNative]);
+
   const toggleConnection = useCallback(async () => {
     if (connecting) return;
     setConnectionError(null);
@@ -81,9 +177,7 @@ export function VPNProvider({ children }) {
       try {
         await tunnel.disconnect();
       } catch (_) {}
-      setConnected(false);
-      setTunnelStatus('DOWN');
-      setExitInfo({ ip: null, country: null, city: null, countryCode: null });
+      await applyConnectedState(false);
       setConnecting(false);
       return;
     }
@@ -172,12 +266,11 @@ export function VPNProvider({ children }) {
       if (!handshakeOK) {
         try { await tunnel.disconnect(); } catch (_) {}
         throw new Error(
-          'VPN tüneli açıldı ama sunucu el sıkışması yapmadı (peer sunucuda eksik veya UDP/51820 bloke). Aboneliğin aktif olduğundan emin olup tekrar deneyin.'
+          'VPN tüneli açıldı ama sunucu el sıkışması yapmadı (peer sunucuda eksik veya UDP/51820 bloke). Mobil veride domain çözümü gerekli — Wi-Fi ile tekrar deneyin.'
         );
       }
 
-      setConnected(true);
-      setTunnelStatus('UP');
+      await applyConnectedState(true, { connectedAt: Date.now() });
       (async () => {
         for (let attempt = 0; attempt < 5; attempt += 1) {
           try {
@@ -193,8 +286,7 @@ export function VPNProvider({ children }) {
       })();
     } catch (err) {
       const msg = String(err?.message || err || '');
-      setConnected(false);
-      setTunnelStatus('DOWN');
+      await applyConnectedState(false);
       const nativeMissing =
         msg === 'NATIVE_MODULE_MISSING' ||
         msg.includes('NATIVE_MODULE_MISSING') ||
@@ -231,7 +323,7 @@ export function VPNProvider({ children }) {
     } finally {
       setConnecting(false);
     }
-  }, [connected, connecting, selectedServer, servers, routeMode, dnsLeakProtection]);
+  }, [connected, connecting, selectedServer, servers, routeMode, dnsLeakProtection, applyConnectedState]);
 
   const selectServer = useCallback((server) => {
     setSelectedServer(server);
@@ -254,6 +346,8 @@ export function VPNProvider({ children }) {
     setRouteMode,
     tunnelStatus,
     exitInfo,
+    connectedAt,
+    syncFromNative,
     connectionError,
     clearConnectionError: () => setConnectionError(null),
     isNativeAvailable: tunnel.isNativeAvailable(),

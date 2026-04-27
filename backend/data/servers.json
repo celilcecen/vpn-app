@@ -4,7 +4,7 @@
     "country": "ABD (Oregon)",
     "code": "US",
     "ping": 85,
-    "endpoint": "35.163.17.141:51820",
+    "endpoint": "api.guardline.online:51820",
     "serverPublicKey": "zmM8xGicGgjcbiTq5ksGKtlx9uWDEgtExaH0EI8YUXY="
   }
 ]
